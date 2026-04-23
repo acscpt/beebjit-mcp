@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beebjit-mcp"
+version = "0.0.1"
+description = "Pure-Python MCP server exposing the beebjit BBC Micro emulator to MCP-speaking clients over stdio JSON-RPC"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "acscpt"}
+]
+keywords = ["bbc-micro", "acorn", "beebjit", "emulator", "mcp", "model-context-protocol", "retro", "8bit", "llm", "ai-tools"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Emulators",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "mcp==1.27.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov>=4"]
+
+[project.scripts]
+beebjit-mcp = "beebjit_mcp.server:main"
+
+[project.urls]
+Repository = "https://github.com/acscpt/beebjit-mcp"
+Issues = "https://github.com/acscpt/beebjit-mcp/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_functions = "test*"
+
+[tool.coverage.run]
+source = ["beebjit_mcp"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
