@@ -75,18 +75,20 @@ async def _runKeyEventsRoundTrip(
                 # key_up, with the symbolic form for key_down and the
                 # single-char form for key_up. This exercises both
                 # input shapes accepted by the resolver.
-                await session.call_tool(
+                keyDown = await session.call_tool(
                     "key_down",
                     {"session_id": sessionId, "key": "A"},
                 )
+                keyDownPayload = json.loads(keyDown.content[0].text)
                 await session.call_tool(
                     "run_for_cycles",
                     {"session_id": sessionId, "cycles": 5_000_000},
                 )
-                await session.call_tool(
+                keyUp = await session.call_tool(
                     "key_up",
                     {"session_id": sessionId, "key": ord("A")},
                 )
+                keyUpPayload = json.loads(keyUp.content[0].text)
                 await session.call_tool(
                     "run_for_cycles",
                     {"session_id": sessionId, "cycles": 5_000_000},
@@ -101,6 +103,8 @@ async def _runKeyEventsRoundTrip(
                 return {
                     "read_payload": readPayload,
                     "screen": screenText,
+                    "key_down": keyDownPayload,
+                    "key_up": keyUpPayload,
                 }
 
             finally:
@@ -122,3 +126,13 @@ def testWriteMemoryAndKeyEventsViaMcp(beebjitBinary: Path) -> None:
     # LOCK is on by default so uppercase lands even without SHIFT.
     screen: str = result["screen"]
     assert ">A" in screen, f"'>A' missing from screen:\n{screen}"
+
+    # Both tools echo the resolved BBC key code. "A" resolves to
+    # matrix code 65, and ord("A") is already 65.
+    keyDown = result["key_down"]
+    assert keyDown["ok"] is True
+    assert keyDown["key"] == 65
+
+    keyUp = result["key_up"]
+    assert keyUp["ok"] is True
+    assert keyUp["key"] == 65

@@ -94,9 +94,10 @@ async def _runCapsLockRoundTrip(
                 # Flip caps lock back on via press_caps_lock (the
                 # toggle tool) and verify it matches via a follow-up
                 # set_caps_lock(True) that should be a no-op.
-                await session.call_tool(
+                pressCaps = await session.call_tool(
                     "press_caps_lock", {"session_id": sessionId}
                 )
+                pressCapsPayload = json.loads(pressCaps.content[0].text)
                 await session.call_tool(
                     "run_for_cycles",
                     {"session_id": sessionId, "cycles": 2_000_000},
@@ -112,6 +113,7 @@ async def _runCapsLockRoundTrip(
                     "flip_off": flipOffPayload,
                     "screen": screenText,
                     "followup": followupPayload,
+                    "press_caps_lock": pressCapsPayload,
                 }
 
             finally:
@@ -143,6 +145,11 @@ def testCapsLockAndRawTypingRoundTrip(beebjitBinary: Path) -> None:
     # too (matrix requires SHIFT for uppercase letters with CAPS
     # LOCK OFF).
     assert "PRINT" in screen, f"uppercase PRINT missing from screen:\n{screen}"
+
+    # press_caps_lock returns the BBC key code for CAPS LOCK (135).
+    pressCaps = result["press_caps_lock"]
+    assert pressCaps["ok"] is True
+    assert pressCaps["key"] == 135
 
     # After press_caps_lock re-enables CAPS LOCK, set_caps_lock(True)
     # should again be idempotent (no tap).
