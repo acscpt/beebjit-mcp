@@ -49,8 +49,8 @@ The main documentation will refer to that [beebjit _fork_](https://github.com/ac
 
 ## Disclaimer
 
-`beebjit-MCP` is a completely separate project.
+`beebjit-MCP` is a completely separate project to [beebjit](https://github.com/scarybeasts/beebjit).
 
-It is not affiliated with, sponsored, or endorsed by [**Chris Evans**](scarybeasts@gmail.com)  or the [beebjit](https://github.com/scarybeasts/beebjit) project.
+It is not affiliated with, sponsored, or endorsed by [Chris Evans](scarybeasts@gmail.com)  or the [beebjit](https://github.com/scarybeasts/beebjit) project.
 
 Please refer to [beebjit](https://github.com/scarybeasts/beebjit).

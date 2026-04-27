@@ -1,0 +1,686 @@
+# Tool reference
+
+This is the human-facing reference for the MCP tools the server exposes. The agent's actual view comes from the live schema served at runtime via `tools/list`, derived from the FastMCP decorators in `src/beebjit_mcp/server.py`. This document mirrors that schema and adds the prose context (purpose, edge cases, composition guidance) that the schema cannot carry. If the document and the live schema diverge, the schema wins.
+
+Every tool takes a JSON object and returns a JSON object. `session_id` identifies which BBC Micro to act on and comes back from `create_machine`. Calls are serialised end-to-end: each tool call is one request, one response, and the server does not run two tool bodies in parallel against the same session.
+
+The project is pre-alpha. Tool names, parameter lists, and return shapes can change before the first tagged release.
+
+## Index
+
+| Tool | Category | Purpose |
+| --- | --- | --- |
+| [`create_machine`](#create_machine) | Lifecycle | Boot a fresh BBC Micro session |
+| [`destroy_machine`](#destroy_machine) | Lifecycle | Tear a session down and release the subprocess |
+| [`run_for_cycles`](#run_for_cycles) | Execution | Advance the emulator by exactly N BBC cycles |
+| [`run_until_text`](#run_until_text) | Execution | Run until a substring appears in the MODE 7 screen |
+| [`run_until_prompt`](#run_until_prompt) | Execution | Run until a prompt character at the start of a row |
+| [`type_input`](#type_input) | Input | Type an ASCII string (CAPS LOCK on) |
+| [`type_input_raw`](#type_input_raw) | Input | Type an ASCII string preserving case (CAPS LOCK off) |
+| [`key_down`](#key_down-and-key_up) | Input | Low-level matrix key-down event |
+| [`key_up`](#key_down-and-key_up) | Input | Low-level matrix key-up event |
+| [`press_caps_lock`](#press_caps_lock) | Input | Tap CAPS LOCK to toggle the current state |
+| [`set_caps_lock`](#set_caps_lock) | Input | Set CAPS LOCK to a specific state (idempotent) |
+| [`read_memory`](#read_memory) | Inspection | Read a contiguous block of BBC RAM |
+| [`write_memory`](#write_memory) | Inspection | Poke bytes into memory |
+| [`read_registers`](#read_registers) | Inspection | Return 6502 register state |
+| [`read_mode7_text`](#read_mode7_text) | Inspection | Capture the MODE 7 screen as 25 rows of 40 chars |
+| [`disassemble`](#disassemble) | Inspection | Disassemble 6502 instructions |
+| [`run_basic`](#run_basic) | Composition | Type a BBC BASIC program, run it, return the final screen |
+| [`reload_module`](#reload_module) | Dev | Hot-reload a pure module without restarting the server |
+
+## Conventions
+
+- Addresses and cycle counts are base-10 integers in JSON. Hex literals work too (`0x7C00` or `31744` both parse).
+
+- `session_id` is an opaque UUID string returned by `create_machine`. Every tool except `create_machine` and `reload_module` takes one as its first parameter. The per-tool **Parameters** sections below list only the additional parameters.
+
+- Every tool returns a JSON object, never a bare value, so fields can be added backwards-compatibly.
+
+- Errors surface through the MCP tool-call error channel, not through a payload `ok` flag. Catch them with your client's usual error-handling path.
+
+- This documentation uses `&ADDR` for BBC memory addresses, matching the BBC Micro User Guide. Source code uses `0x`.
+
+## Lifecycle
+
+### `create_machine`
+
+Boot a fresh BBC Micro session.
+
+**Parameters**
+
+- `model` *(string, default `"b"`)*: BBC model. Only `"b"` (BBC B) is supported.
+
+- `disc` *(string | null, default `null`)*: Absolute path to an SSD or DSD disc image. When set, beebjit launches with `-0 <path> -autoboot` so the disc runs its `!BOOT` file on power-on.
+
+**Returns**
+
+- `session_id` *(string)*: Opaque UUID identifying the new session. Pass this on every subsequent call against this BBC Micro.
+
+**Errors**
+
+- beebjit binary not found (`$BEEBJIT` unset and no `beebjit` on `$PATH`).
+
+- Subprocess dies before the first prompt. The error message includes the stderr tail.
+
+- Cold start exceeds the 10-second initial-prompt timeout.
+
+**Example**
+
+```json
+// Request
+{"model": "b", "disc": null}
+
+// Response
+{"session_id": "550e8400-e29b-41d4-a716-446655440000"}
+```
+
+**Notes**
+
+The spawn is synchronous: the tool returns once beebjit has reached its first `(6502db)` debugger prompt, typically under 100 ms on a modern host.
+
+[^ Index](#index)
+
+### `destroy_machine`
+
+Tear a session down and release the beebjit subprocess.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on clean teardown, `false` if the session id is not recognised.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>"}
+
+// Response
+{"ok": true}
+```
+
+**Notes**
+
+The teardown sends `q` to the debugger, waits up to five seconds for beebjit to exit cleanly, and escalates to `SIGKILL` if the process is still alive. The `false` path is not an error condition. Double-destroy from a retrying client returns `{"ok": false}` cleanly without crashing the server.
+
+[^ Index](#index)
+
+## Execution
+
+### `run_for_cycles`
+
+Advance the emulator by exactly N BBC cycles.
+
+**Parameters**
+
+- `cycles` *(integer)*: Number of BBC cycles to advance.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `cycles_ran` *(integer)*: Number of cycles requested.
+- `cycles_total` *(integer)*: Cumulative cycle count after the run, anchored from beebjit's live cycle register.
+
+**Errors**
+
+- 30-second host-side timeout on the underlying `c` (continue). Covers many billions of BBC cycles at `-fast` on a modern host. For longer runs, chunk from the client side.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "cycles": 5000000}
+
+// Response
+{"ok": true, "cycles_ran": 5000000, "cycles_total": 5000017}
+```
+
+**Notes**
+
+Cycle counting is anchored on a live register read each call. The driver reads the current cycle count, computes `target = current + cycles`, sets `breakat target`, and issues `c`. Chained calls do not accumulate drift.
+
+beebjit can overshoot the breakpoint by a handful of instructions. `cycles_total` reports the exact stopping point.
+
+[^ Index](#index)
+
+### `run_until_text`
+
+Run in chunks until a substring appears anywhere in the MODE 7 screen, or until the cycle budget is exhausted.
+
+**Parameters**
+
+- `needle` *(string)*: Substring to search for in the joined MODE 7 screen.
+- `max_cycles` *(integer, default `20000000`)*: Maximum BBC cycles to run before giving up.
+- `chunk_cycles` *(integer, default `500000`)*: BBC cycles per chunk between screen checks.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` if the needle was found, `false` if the budget was exhausted.
+- `found` *(boolean)*: Mirrors `ok`. Explicit so callers can branch on the search result alone.
+- `cycles_ran` *(integer)*: Total cycles consumed before stopping.
+
+**Example**
+
+```json
+// Request
+{
+  "session_id": "<uuid>",
+  "needle": "HELLO",
+  "max_cycles": 20000000,
+  "chunk_cycles": 500000
+}
+
+// Response (success)
+{"ok": true, "found": true, "cycles_ran": 1500000}
+
+// Response (exhaustion)
+{"ok": false, "found": false, "cycles_ran": 20000000}
+```
+
+**Notes**
+
+The tool runs one chunk, captures the MODE 7 screen, searches the `\n`-joined rows for the needle, and returns on a match. The newline join prevents spurious cross-row hits: a `HELLO` split across rows 12 and 13 will not match the needle `HELLO`.
+
+The first screen check happens after running one chunk, not at cycle zero, so uninitialised framebuffer bytes from before the first BBC screen paint cannot produce a false positive.
+
+Smaller `chunk_cycles` checks the screen more often at the cost of one framebuffer read per chunk. The default trades responsiveness for overhead.
+
+[^ Index](#index)
+
+### `run_until_prompt`
+
+Run in chunks until a prompt character appears at the start of a MODE 7 row.
+
+**Parameters**
+
+- `prompt` *(string, default `">"`)*: Prompt string to match at the start of a row. The default is the standard BBC BASIC prompt.
+- `max_cycles` *(integer, default `20000000`)*: Maximum BBC cycles to run before giving up.
+- `chunk_cycles` *(integer, default `500000`)*: BBC cycles per chunk between screen checks.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` if the prompt was found, `false` otherwise.
+- `found` *(boolean)*: Mirrors `ok`.
+- `cycles_ran` *(integer)*: Total cycles consumed.
+- `prompt` *(string)*: The match target, echoed for debugging.
+
+**Example**
+
+```json
+// Request
+{
+  "session_id": "<uuid>",
+  "prompt": ">",
+  "max_cycles": 20000000,
+  "chunk_cycles": 500000
+}
+
+// Response
+{"ok": true, "found": true, "cycles_ran": 6000000, "prompt": ">"}
+```
+
+**Notes**
+
+The row-anchored cousin of [`run_until_text`](#run_until_text). The match requires the prompt string at the start of a (left-stripped) row, so a `>` embedded mid-line (inside the typed command, for example) does not count.
+
+Use this when you want to wait for BASIC or the MOS to return control to the user, rather than just any appearance of text on screen.
+
+[^ Index](#index)
+
+## Input
+
+### `type_input`
+
+Type an ASCII string as BBC keypresses.
+
+**Parameters**
+
+- `text` *(string)*: ASCII text to type. A trailing `\n` triggers RETURN.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `chars` *(integer)*: Number of characters typed.
+
+**Errors**
+
+- `UnsupportedCharError` for characters without a BBC matrix mapping. Surfaced as an MCP tool-call error. The character table lives in `src/beebjit_mcp/keyboard.py`; extending it for a missing glyph is a few lines.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "text": "PRINT \"HELLO\"\n"}
+
+// Response
+{"ok": true, "chars": 14}
+```
+
+**Notes**
+
+Each character is translated to a BBC matrix key, tapped with SHIFT held where the BBC layout requires it, and separated from the next character by a cycle gap tuned for 100% reliability against the MOS keyboard ISR.
+
+This tool assumes CAPS LOCK is ON (the cold-boot default). Lowercase input is upper-cased silently so a caller writing `print "hello"` still gets a working program. For deterministic case control, use [`set_caps_lock`](#set_caps_lock) first and [`type_input_raw`](#type_input_raw) instead.
+
+Per-character cost is HOLD=5M + GAP=5M = 10M BBC cycles. A 14-character line like `PRINT "HELLO"\n` advances the emulator by ~140M cycles, a few hundred milliseconds of host time at `-fast`. See [keypress timing](keypress-timing.md) for why the numbers are what they are.
+
+[^ Index](#index)
+
+### `type_input_raw`
+
+Type an ASCII string preserving case.
+
+**Parameters**
+
+- `text` *(string)*: ASCII text to type. A trailing `\n` triggers RETURN.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `chars` *(integer)*: Number of characters typed.
+
+**Errors**
+
+- `UnsupportedCharError` for characters without a BBC matrix mapping.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "text": "print \"hi\"\n"}
+
+// Response
+{"ok": true, "chars": 11}
+```
+
+**Notes**
+
+Like [`type_input`](#type_input), but the case of each letter dictates whether SHIFT is applied. Lowercase stays lowercase on screen; uppercase becomes SHIFT-held so the BBC matrix produces uppercase.
+
+This tool requires CAPS LOCK to be OFF. Call [`set_caps_lock`](#set_caps_lock) with `on: false` first; a cold-boot BBC has CAPS LOCK ON and will otherwise invert every letter.
+
+[^ Index](#index)
+
+### `key_down` and `key_up`
+
+Low-level matrix events with no automatic timing.
+
+**Parameters**
+
+- `key`: One of:
+    - A raw integer key code (0-255).
+    - A single-character string; letters are upper-cased so `"a"` and `"A"` both hit matrix position 65.
+    - A symbolic name from `SPECIAL_KEYS`: `ESCAPE`, `BACKSPACE`, `TAB`, `RETURN`, `CTRL`, `SHIFT_LEFT`, `SHIFT_RIGHT`, `CAPS_LOCK`, `F0`-`F9`, `F11`, `F12`, `UP_ARROW`, `DOWN_ARROW`, `LEFT_ARROW`, `RIGHT_ARROW`, `DELETE`, `HOME`, `RELEASE_ALL`. Case-insensitive.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `key` *(integer)*: Resolved BBC key code (0-255) that was sent to the matrix.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "key": "CAPS_LOCK"}
+
+// Response
+{"ok": true, "key": 135}
+```
+
+**Notes**
+
+These events go straight to the BBC matrix. No cycle advance, no SHIFT handling, no gap. Pair with [`run_for_cycles`](#run_for_cycles) for timing, or use [`type_input`](#type_input) if you just want a reliable tap.
+
+`RELEASE_ALL` (code 255) clears every held key in one event. Send it via `key_up` at the end of a composed sequence where tracking each individual key-up is tedious.
+
+[^ Index](#index)
+
+### `press_caps_lock`
+
+Tap CAPS LOCK once to toggle the current state.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `key` *(integer)*: BBC key code for CAPS LOCK (`135`).
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>"}
+
+// Response
+{"ok": true, "key": 135}
+```
+
+**Notes**
+
+Pure toggle. The tool does not read the current state. If you need a deterministic final state, use [`set_caps_lock`](#set_caps_lock) instead.
+
+[^ Index](#index)
+
+### `set_caps_lock`
+
+Set CAPS LOCK to a specific state.
+
+**Parameters**
+
+- `on` *(boolean)*: Desired CAPS LOCK state.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `tapped` *(boolean)*: `true` if the tool tapped the key, `false` if the desired state was already in effect.
+- `caps_lock_on` *(boolean)*: Resulting CAPS LOCK state.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "on": false}
+
+// Response
+{"ok": true, "tapped": true, "caps_lock_on": false}
+```
+
+**Notes**
+
+Idempotent. The tool reads the MOS caps-lock flag at `&025A` bit 4 and taps key 135 only if the current state differs from `on`. Calling `set_caps_lock(on: true)` twice does not flip the state. Use this as the setup for [`type_input_raw`](#type_input_raw) when you need lowercase on screen.
+
+[^ Index](#index)
+
+## Inspection
+
+### `read_memory`
+
+Read a contiguous block of BBC RAM.
+
+**Parameters**
+
+- `addr` *(integer)*: 16-bit BBC address (0-65535).
+- `length` *(integer)*: Number of bytes to read.
+
+**Returns**
+
+- `hex` *(string)*: Lower-case hex string of the bytes, contiguous, no separators.
+- `ascii` *(string)*: ASCII view of the same bytes, non-printable bytes replaced with `.` (matches `hexdump -C` convention).
+
+**Errors**
+
+- Refuses if `addr + length` exceeds `0x10000`. The driver does not wrap silently.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "addr": 32256, "length": 40}
+
+// Response
+{
+  "hex": "20202020...",
+  "ascii": "                                        "
+}
+```
+
+**Notes**
+
+`hex` and `ascii` are computed from the same read so they cannot diverge. Each beebjit `m` call returns 64 bytes. The driver loops with the next unread address until it has the requested length, then trims.
+
+[^ Index](#index)
+
+### `write_memory`
+
+Poke bytes into memory starting at `addr`.
+
+**Parameters**
+
+- `addr` *(integer)*: 16-bit BBC address (0-65535).
+- `data` *(string)*: Hex string of bytes. Whitespace between bytes is tolerated; `"DE AD BE EF"` and `"DEADBEEF"` write the same four bytes.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `addr` *(integer)*: Address echoed back.
+- `length` *(integer)*: Number of bytes written.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "addr": 32256, "data": "DEADBEEF"}
+
+// Response
+{"ok": true, "addr": 32256, "length": 4}
+```
+
+**Notes**
+
+The `data` shape is symmetric with [`read_memory`](#read_memory)'s `hex` field, so a read can be round-tripped straight back through a write. Writes longer than 16 bytes are chunked internally to keep command lines manageable.
+
+[^ Index](#index)
+
+### `read_registers`
+
+Return 6502 register state.
+
+**Returns**
+
+- `A`, `X`, `Y`, `S` *(integer)*: Standard 6502 register values, decoded as integers.
+- `F` *(string)*: beebjit's whitespace-padded 8-character flag string verbatim. Each slot is one flag; unset flags show as space, set flags carry their letter, and the unused B slot holds a literal `1`. Scan for the letter of interest rather than relying on fixed column positions.
+- `PC` *(integer)*: 16-bit program counter.
+- `cycles` *(integer)*: 64-bit total cycle count since boot. Use as the anchor for cross-call cycle arithmetic.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>"}
+
+// Response
+{
+  "A": 0,
+  "X": 0,
+  "Y": 0,
+  "S": 253,
+  "F": "  I  1  ",
+  "PC": 55757,
+  "cycles": 5000017
+}
+```
+
+[^ Index](#index)
+
+### `read_mode7_text`
+
+Capture the MODE 7 screen as 25 rows of 40 characters.
+
+**Returns**
+
+- `rows` *(array of strings)*: Always exactly 25 strings of exactly 40 characters each.
+- `text` *(string)*: The same content with `\n` between rows, for convenient substring searching.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>"}
+
+// Response
+{
+  "rows": ["BBC Computer 32K", "", "Acorn DFS", "..."],
+  "text": "BBC Computer 32K\n\nAcorn DFS\n..."
+}
+```
+
+**Notes**
+
+Non-printable bytes (teletext control codes, uninitialised memory, graphics glyphs) render as space so column alignment is preserved.
+
+The decode is CRTC-scroll-aware. On a BBC the MODE 7 framebuffer sits in a 1024-byte page at `&7C00-&7FFF`. Only 1000 bytes are visible at any time. Hardware scrolling advances the display-start pointer, and the MOS caches it at `&0350/&0351`. The driver reads the whole 1024-byte page plus the pointer, rotates the page into display order, and feeds the 1000 display bytes to the decoder. See [MODE 7 decode](mode7-decode.md) for detail.
+
+This tool is MODE-7-only. In a bitmapped mode (MODE 0-6) the returned rows are not meaningful text.
+
+[^ Index](#index)
+
+### `disassemble`
+
+Disassemble 6502 instructions starting at `addr`.
+
+**Parameters**
+
+- `addr` *(integer)*: 16-bit address to start disassembly at.
+- `count` *(integer, default `20`)*: Number of instructions to return. Capped at 20 (beebjit's native batch size).
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `instructions` *(array of objects)*: Each object has:
+    - `addr` *(integer)*: Address of the instruction.
+    - `info` *(string)*: beebjit's per-line tag (`"ITRP"` for interrupt, `"JIT"` for compiled code, sometimes empty).
+    - `text` *(string)*: Mnemonic and operands as beebjit prints them.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "addr": 57344, "count": 5}
+
+// Response
+{
+  "ok": true,
+  "instructions": [
+    {"addr": 57344, "info": "ITRP", "text": "JSR $E004"},
+    {"addr": 57347, "info": "ITRP", "text": "RTI"}
+  ]
+}
+```
+
+**Notes**
+
+For longer disassembly, loop from the caller side by re-dispatching at the next unread address.
+
+beebjit does not emit raw opcode bytes in its disassembly output. If you need them, pair with [`read_memory`](#read_memory) at the same address.
+
+[^ Index](#index)
+
+## Composition helpers
+
+### `run_basic`
+
+Type a BBC BASIC program, run it, and return the final screen.
+
+**Parameters**
+
+- `program` *(string)*: BASIC source. Each line must carry its own line number.
+- `boot_cycles` *(integer, default `5000000`)*: Cycles to advance before typing the program (lets the BBC reach the BASIC prompt).
+- `settle_cycles` *(integer, default `20000000`)*: Cycles to advance after `RUN` before capturing the screen.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `rows` *(array of strings)*: 25 rows of 40 characters from the MODE 7 screen.
+- `text` *(string)*: Newline-joined version of `rows`.
+
+**Example**
+
+```json
+// Request
+{
+  "session_id": "<uuid>",
+  "program": "10 PRINT \"HELLO\"\n20 END\n",
+  "boot_cycles": 5000000,
+  "settle_cycles": 20000000
+}
+
+// Response
+{
+  "ok": true,
+  "rows": ["...", "HELLO", ">", "..."],
+  "text": "...\nHELLO\n>\n..."
+}
+```
+
+**Notes**
+
+A convenience wrapper. The same effect is achievable with explicit [`type_input`](#type_input) and [`run_for_cycles`](#run_for_cycles) calls. Use it when the program is a one-shot and the final screen is all you need.
+
+The tool issues `NEW` first to clear any existing program, types the BASIC source, types `RUN`, and runs for `settle_cycles` before capturing.
+
+Does not poll for the prompt after `RUN` because not every program terminates at `>`. Some loop forever, others wait for keypresses. Pair with [`run_until_prompt`](#run_until_prompt) if the program is expected to return to BASIC.
+
+[^ Index](#index)
+
+## Development aids
+
+### `reload_module`
+
+Hot-reload a pure beebjit-MCP module without restarting the server.
+
+**Parameters**
+
+- `module_name` *(string)*: Module to reload. Must be `"keyboard"` or `"screen"`.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `reloaded` *(string)*: Fully qualified module name that was reloaded.
+- `rebound_in` *(array of strings)*: Modules where `from X import Y` names were rebound to the new module.
+
+**Errors**
+
+- `"driver"` and `"server"` are refused because reloading either would invalidate live session objects. The only safe path for driver or server changes is a full server restart.
+
+**Example**
+
+```json
+// Request
+{"module_name": "keyboard"}
+
+// Response
+{
+  "ok": true,
+  "reloaded": "beebjit_mcp.keyboard",
+  "rebound_in": ["beebjit_mcp.driver", "beebjit_mcp.server"]
+}
+```
+
+**Notes**
+
+Intended for in-session development: edit `keyboard.py` or `screen.py`, call this tool, and subsequent tool calls pick up the new code.
+
+The reload performs two steps: `importlib.reload` on the target module, then a rebind pass that updates the names dependent modules imported with `from X import Y`. Without the rebind, `driver.asciiToKeys` would still point at the pre-reload function object even after the module was replaced.
+
+Class method bodies are a known limitation. Editing a method on `BeebjitDriver` and reloading `driver` would orphan every live session.
+
+[^ Index](#index)
+
+## Worked example: HELLO round trip
+
+The six-call sequence that `tests/test_hello.py::testServerHelloRoundTripViaMcp` exercises end-to-end:
+
+```text
+1. create_machine {}
+   -> {"session_id": "<uuid>"}
+
+2. run_for_cycles {"session_id": s, "cycles": 5000000}
+   -> {"ok": true, "cycles_ran": 5000000, "cycles_total": 5000017}
+
+3. type_input {"session_id": s, "text": "PRINT \"HELLO\"\n"}
+   -> {"ok": true, "chars": 14}
+
+4. run_until_text {"session_id": s, "needle": "HELLO", "max_cycles": 20000000}
+   -> {"ok": true, "found": true, "cycles_ran": 1500000}
+
+5. read_mode7_text {"session_id": s}
+   -> {"rows": [..., ">PRINT \"HELLO\"", "HELLO", ">", ...], "text": "..."}
+
+6. destroy_machine {"session_id": s}
+   -> {"ok": true}
+```
+
+The exact cycle counts vary: `run_for_cycles` may overshoot by a handful of instructions, and `run_until_text` rounds up to the nearest `chunk_cycles` boundary. Treat the numbers here as illustrative.
+
+Step 2 carries the BBC past the ROM banner to the BASIC `>` prompt. Step 3 types the statement and RETURN. Step 4 runs until the echoed `HELLO` appears in MODE 7. Step 5 captures the screen. Step 6 releases the subprocess.
+
+For the full narrative from zero, see [Quickstart](quickstart.md).

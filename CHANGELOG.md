@@ -6,13 +6,9 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 ## [Unreleased]
 
-- First public `v0.1.0-alpha` tag pending.
-
-## [0.1.0-alpha] - (unreleased)
-
-First tagged release. Pre-alpha; expect breakage.
-
 ### Added
+
+- First public `v0.1.0-alpha` tag pending.
 
 - **Lifecycle tools**: `create_machine` (spawns a BBC B session with optional disc autoboot), `destroy_machine` (clean teardown with SIGKILL fallback).
 
