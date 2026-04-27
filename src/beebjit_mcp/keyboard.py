@@ -10,8 +10,9 @@ emulator dependency; the driver composes this module's output with
 
 BBC keyboard model, relevant to translation:
 
-* beebjit's `keydown` command accepts uppercase ASCII
-  (A-Z, 0-9) and a subset of punctuation as *direct* key codes
+* beebjit's `keydown` and `keyup` debugger commands accept
+  uppercase ASCII (A-Z, 0-9) and a subset of punctuation as
+  *direct* key codes
 * Special keys (RETURN, SHIFT, ...) use beebjit codes 128-157
 * CAPS LOCK is on by default on a cold BBC boot, so uppercase
   letters type as uppercase with no shift needed
@@ -39,9 +40,9 @@ from __future__ import annotations
 # -----------------------------------------------------------------------
 
 # Named codes below cover the 128-157 range and the special 255
-# release-all code. Callers that want a
-# specific physical key press without going through the ASCII layer
-# use `SPECIAL_KEYS` or `resolveKeyName`.
+# release-all code. Callers that want a specific physical key press
+# without going through the ASCII layer use `SPECIAL_KEYS` or
+# `resolveKeyName`.
 
 BBC_KEY_ESCAPE: int = 128
 BBC_KEY_BACKSPACE: int = 129
@@ -111,8 +112,8 @@ SPECIAL_KEYS: dict[str, int] = {
 # Direct-map character sets
 # -----------------------------------------------------------------------
 
-# Punctuation that beebjit's keydown command accepts as a
-# plain ASCII code without any shift. These are the characters we
+# Punctuation that beebjit's keydown command accepts as a plain
+# ASCII code without any shift. These are the characters we
 # actually need for BASIC immediate-mode input; the table can grow as
 # new use cases appear.
 _DIRECT_PUNCT: tuple[str, ...] = (" ", ",", ".", "/", "-", ";")
