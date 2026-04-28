@@ -66,6 +66,8 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - `load_disc` (post-boot) is not implemented.
 
+- `reset` on a session created with `disc=` always re-runs `!BOOT` regardless of `autoboot`, because `create_machine` passes `-autoboot` to beebjit and the flag is sticky across runtime resets. Plain `reset(autoboot=False)` on a disc-mounted session is unreliable as a result.
+
 - `type_input` runs ~10M BBC cycles per character (HOLD=5M + GAP=5M). At `-fast` that is a few ms per character on a modern host; long scripted input (~1000 chars) takes low-single-digit seconds of host time.
 
 - `read_mode7_text` is MODE-7-only. In a bitmapped mode (e.g. MODE 1) the returned rows are not meaningful.

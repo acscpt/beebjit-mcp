@@ -99,6 +99,30 @@ def testDriverCaptureScreenRaisesIfNotStarted(tmp_path: Path) -> None:
         drv.captureScreen()
 
 
+def testDriverResetAutobootCompletesOnNoDiscSession(
+    beebjitBinary: Path,
+) -> None:
+    # The autoboot variant adds a SHIFT-LEFT keydown/keyup around the
+    # F12 BREAK. Without a disc inserted there is no `!BOOT` to run,
+    # so the BBC ends up at a plain BASIC prompt either way; the
+    # interesting invariant here is that the SHIFT injection does
+    # not break the reset path itself. A disc-based behavioural test
+    # would prove autoboot fired but is currently blocked by
+    # beebjit's `-autoboot` argv flag re-triggering on every runtime
+    # reset, so plain `reset(autoboot=False)` cannot land at BASIC
+    # while a disc is mounted.
+    with BeebjitDriver(beebjitBinary) as drv:
+        drv.runCycles(5_000_000)
+        regsBefore = drv.readRegisters()
+        cyclesBefore = int(regsBefore["cycles"])
+
+        drv.reset(autoboot=True)
+
+        regsAfter = drv.readRegisters()
+        cyclesAfter = int(regsAfter["cycles"])
+        assert cyclesAfter < cyclesBefore, (cyclesBefore, cyclesAfter)
+
+
 def testDriverResetWrapsCycleCounter(beebjitBinary: Path) -> None:
     # The 6502 cycle counter wraps near zero on a real RESET. Drive
     # the BBC well past the initial boot so the pre-reset cycle
