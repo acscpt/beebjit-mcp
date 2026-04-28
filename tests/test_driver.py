@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
-from beebjit_mcp.driver import BeebjitDriver
+import pytest
+
+from beebjit_mcp.driver import BeebjitDriver, BeebjitError
 
 
 def testDriverSpawnAndQuit(beebjitBinary: Path) -> None:
@@ -59,3 +62,38 @@ def testDriverTapKeyTypesTwoChars(beebjitBinary: Path) -> None:
         row7 = drv.readMemory(0x7C00 + 7 * 40, 40)
         text = row7.rstrip(b" ").decode("ascii", errors="replace")
         assert text.startswith(">PR"), f"expected >PR..., got {text!r}"
+
+
+def testDriverCaptureScreenReturnsBgraBuffer(beebjitBinary: Path) -> None:
+    with BeebjitDriver(beebjitBinary) as drv:
+        drv.runCycles(5_000_000)
+        bgra, width, height = drv.captureScreen()
+        assert (width, height) == (768, 640)
+        assert len(bgra) == 768 * 640 * 4
+        # Border around the BBC display area is opaque black, so the
+        # very first pixel reads as B=0,G=0,R=0,A=0xFF in BGRA byte
+        # order. A regression that broke the byte order would change
+        # the alpha or zero out the alpha channel.
+        assert bgra[:4] == bytes([0x00, 0x00, 0x00, 0xFF])
+
+
+def testDriverCaptureScreenRaisesOnNoRenderBuffer(tmp_path: Path) -> None:
+    # No real beebjit needed: stub sendCommand to simulate the line
+    # the binary emits when started without -headless-render.
+    drv = BeebjitDriver(Path("/nonexistent/beebjit"))
+    drv._tempDir = tmp_path
+    with patch.object(
+        drv,
+        "sendCommand",
+        return_value=[
+            "no render buffer; start with -headless-render or -frame-cycles"
+        ],
+    ):
+        with pytest.raises(BeebjitError, match="no render buffer"):
+            drv.captureScreen()
+
+
+def testDriverCaptureScreenRaisesIfNotStarted(tmp_path: Path) -> None:
+    drv = BeebjitDriver(Path("/nonexistent/beebjit"))
+    with pytest.raises(BeebjitError, match="not started"):
+        drv.captureScreen()

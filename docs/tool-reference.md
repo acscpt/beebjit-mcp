@@ -25,6 +25,7 @@ The project is pre-alpha. Tool names, parameter lists, and return shapes can cha
 | [`write_memory`](#write_memory) | Inspection | Poke bytes into memory |
 | [`read_registers`](#read_registers) | Inspection | Return 6502 register state |
 | [`read_mode7_text`](#read_mode7_text) | Inspection | Capture the MODE 7 screen as 25 rows of 40 chars |
+| [`screenshot`](#screenshot) | Inspection | Capture the rendered BBC screen as a PNG |
 | [`disassemble`](#disassemble) | Inspection | Disassemble 6502 instructions |
 | [`run_basic`](#run_basic) | Composition | Type a BBC BASIC program, run it, return the final screen |
 | [`reload_module`](#reload_module) | Dev | Hot-reload a pure module without restarting the server |
@@ -519,7 +520,47 @@ Non-printable bytes (teletext control codes, uninitialised memory, graphics glyp
 
 The decode is CRTC-scroll-aware. On a BBC the MODE 7 framebuffer sits in a 1024-byte page at `&7C00-&7FFF`. Only 1000 bytes are visible at any time. Hardware scrolling advances the display-start pointer, and the MOS caches it at `&0350/&0351`. The driver reads the whole 1024-byte page plus the pointer, rotates the page into display order, and feeds the 1000 display bytes to the decoder. See [MODE 7 decode](mode7-decode.md) for detail.
 
-This tool is MODE-7-only. In a bitmapped mode (MODE 0-6) the returned rows are not meaningful text.
+This tool is MODE-7-only. In a bitmapped mode (MODE 0-6) the returned rows are not meaningful text. Use [`screenshot`](#screenshot) for the rendered display in any mode.
+
+[^ Index](#index)
+
+### `screenshot`
+
+Capture the current rendered BBC screen as a PNG.
+
+**Returns**
+
+- `format` *(string)*: Always `"png"`. Reserved for future format options.
+- `bytes` *(string)*: Base64-encoded PNG of the rendered framebuffer.
+- `width` *(integer)*: PNG width in pixels (currently 768 for the standard BBC display).
+- `height` *(integer)*: PNG height in pixels (currently 640).
+
+**Errors**
+
+- "no render buffer" surfaced from beebjit itself when the binary lacks the render buffer (typically: launched without `-headless-render`, or built before the `savescreen` debugger command landed). See [binary discovery](binary-discovery.md) for the minimum fork version.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>"}
+
+// Response
+{
+  "format": "png",
+  "bytes": "iVBORw0KGgoAAAANSUhEUgAAA...",
+  "width": 768,
+  "height": 640
+}
+```
+
+**Notes**
+
+beebjit renders the BBC screen into a BGRA framebuffer. The driver asks for the buffer via the `savescreen` debugger command, parses the dimensions from beebjit's own output line, and the server converts the BGRA pixel data into a PNG using a stdlib encoder. This is mode-agnostic, so MODE 7, MODE 1, MODE 4, all return a complete rendered screen with no MCP-side per-mode logic.
+
+The PNG is the rendered display, not the raw BBC framebuffer bytes. Hardware scroll, palette, and any video ULA effects are baked in at capture time. Callers wanting the raw screen RAM should use [`read_memory`](#read_memory) at the appropriate mode-base address instead.
+
+`width` and `height` come from beebjit's announced render geometry, not an MCP-side guess.
 
 [^ Index](#index)
 

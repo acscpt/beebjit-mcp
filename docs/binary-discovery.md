@@ -45,3 +45,9 @@ Two options to remedy this would be:
 - Move or symlink the `roms/` directory next to wherever `$BEEBJIT` points.
 
 - Wrap beebjit in a shell script that `cd`s into the correct directory first, and point `$BEEBJIT` at the script. beebjit inherits its cwd from the script.
+
+## Minimum fork version
+
+beebjit-MCP launches every session with the fork-only flags `-log-stderr`, `-headless-render`, and `-opt video:always-render`, and the [`screenshot`](tool-reference.md#screenshot) tool also depends on the `savescreen` debugger command. The minimum fork version that ships all of these is `v0.9.8-acscpt.2`.
+
+See [installation.md](installation.md) for the latest fork release.

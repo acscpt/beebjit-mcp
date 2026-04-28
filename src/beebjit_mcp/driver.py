@@ -45,7 +45,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -103,6 +105,30 @@ _DISASS_LINE_RE: re.Pattern[bytes] = re.compile(
 # to know how many lines a single `d` call returns when accumulating
 # longer requests.
 _DISASS_LINES_PER_CALL: int = 20
+
+
+# `savescreen <path>` success line:
+#   saved 768x640 BGRA (1966080 bytes) to /tmp/beebjit_session_x/screen.bgra
+_SAVESCREEN_OK_RE: re.Pattern[bytes] = re.compile(
+    rb"saved (\d+)x(\d+) BGRA \((\d+) bytes\) to "
+)
+
+
+# `savescreen` failure line emitted when the render buffer was never
+# allocated (binary launched without -headless-render, or built before
+# the flag landed).
+_SAVESCREEN_NO_BUFFER: str = "no render buffer"
+
+
+# Bytes per pixel in the BGRA frame beebjit writes. Used to validate
+# the file size against the announced WxH.
+_BGRA_BYTES_PER_PIXEL: int = 4
+
+
+# Per-session temp dir prefix. Visible in `lsof` and `/tmp` listings,
+# so the prefix carries enough identity to correlate with this driver
+# at a glance.
+_TEMP_DIR_PREFIX: str = "beebjit_session_"
 
 
 # -----------------------------------------------------------------------
@@ -189,6 +215,12 @@ class BeebjitDriver:
         self._stderrBuf: bytes = b""
         self._eof: bool = False
 
+        # Per-session scratch dir for `savescreen` output and any
+        # future on-disk handoffs. Created on `start()`, removed on
+        # `close()`. Optional so the configured-but-not-started state
+        # stays valid.
+        self._tempDir: Path | None = None
+
     # -----------------------------------------------------------------
     # Lifecycle
     # -----------------------------------------------------------------
@@ -206,10 +238,19 @@ class BeebjitDriver:
         # originally spec'd `-debug -run`; Stage 1 recon showed that
         # combination bypasses the initial prompt and makes framing
         # unreliable.
+        #
+        # `-headless-render` allocates the BGRA render buffer; without
+        # it `savescreen` errors with `no render buffer`.
+        # `-opt video:always-render` forces synchronous per-frame
+        # paint under `-fast`; without it `savescreen` can return
+        # partially rendered or stale buffers between 50Hz ticks.
         argv: list[str] = [
             str(self._binaryPath),
             "-headless",
             "-debug",
+            "-headless-render",
+            "-opt",
+            "video:always-render",
             "-log-stderr",
             "-fast",
             "-cycles",
@@ -222,6 +263,12 @@ class BeebjitDriver:
         # at the BASIC prompt after ROM boot.
         if self._discPath is not None:
             argv.extend(["-0", str(self._discPath), "-autoboot"])
+
+        # Per-session scratch dir for files exchanged with beebjit
+        # via the debugger (currently `savescreen`). Created before
+        # the subprocess so the directory is guaranteed to exist by
+        # the time the first command runs.
+        self._tempDir = Path(tempfile.mkdtemp(prefix=_TEMP_DIR_PREFIX))
 
         # cwd must be the binary's directory: beebjit loads its OS
         # and language ROMs from `roms/` relative to cwd, not
@@ -302,6 +349,13 @@ class BeebjitDriver:
         self._process = None
         self._stdoutThread = None
         self._stderrThread = None
+
+        # Temp dir cleanup is best-effort: if a savescreen file is
+        # still open by some process the rmtree would otherwise raise
+        # and stall idempotency.
+        if self._tempDir is not None:
+            shutil.rmtree(self._tempDir, ignore_errors=True)
+            self._tempDir = None
 
     # -----------------------------------------------------------------
     # Reader threads and framing
@@ -625,6 +679,89 @@ class BeebjitDriver:
             startAddr = MODE7_BASE_ADDR
 
         return rotateMode7Page(page, startAddr)
+
+    def captureScreen(self) -> tuple[bytes, int, int]:
+        """Capture the rendered framebuffer as raw BGRA bytes.
+
+        Returns `(bgra_bytes, width, height)`. Width and height come
+        from beebjit's own `savescreen` stdout line, not an MCP-side
+        guess about render dimensions, so a future fork that changes
+        the buffer size flows through automatically.
+
+        Raises `BeebjitError` if the binary lacks the render buffer
+        (typically: launched without `-headless-render`, or built
+        before the savescreen command landed) or if the announced
+        size disagrees with the file written.
+        """
+
+        if self._tempDir is None:
+            raise BeebjitError("driver not started")
+
+        target = self._tempDir / "screen.bgra"
+
+        # Defensive unlink: a stale file from a previous savescreen
+        # would otherwise mask a current-call failure where beebjit
+        # printed an error and never wrote the new frame.
+        if target.exists():
+            target.unlink()
+
+        lines = self.sendCommand(f"savescreen {target}")
+
+        # Old-binary or missing-flag path: savescreen prints a single
+        # diagnostic line and does not create the file. Surface that
+        # diagnostic verbatim so the operator can act on it.
+        for line in lines:
+            if _SAVESCREEN_NO_BUFFER in line:
+                raise BeebjitError(
+                    f"savescreen failed: {line.strip()}"
+                )
+
+        # Success line carries width, height, and announced byte
+        # count. beebjit emits exactly one match per call, so first
+        # hit is also the only hit.
+        width = 0
+        height = 0
+        announced = 0
+        for line in lines:
+            match = _SAVESCREEN_OK_RE.search(line.encode())
+            if match is not None:
+                width = int(match.group(1))
+                height = int(match.group(2))
+                announced = int(match.group(3))
+                break
+        else:
+            raise BeebjitError(
+                f"could not parse savescreen output: {lines!r}"
+            )
+
+        if not target.is_file():
+            raise BeebjitError(
+                f"savescreen reported success but {target} is missing"
+            )
+
+        bgra = target.read_bytes()
+
+        # Two cross-checks: the file matches the announced byte
+        # count, and the byte count matches WxH*4. Either mismatch
+        # would mean a fork-side change broke our assumption about
+        # the BGRA layout and we want to know rather than silently
+        # ship a malformed frame.
+        if len(bgra) != announced:
+            raise BeebjitError(
+                f"savescreen file size {len(bgra)} != announced {announced}"
+            )
+        if len(bgra) != width * height * _BGRA_BYTES_PER_PIXEL:
+            raise BeebjitError(
+                f"savescreen file size {len(bgra)} != "
+                f"{width}x{height}*{_BGRA_BYTES_PER_PIXEL}"
+            )
+
+        # Unlink as soon as we have the bytes so a long-running
+        # session does not accumulate frames in the temp dir between
+        # captures.
+        target.unlink()
+
+        return bgra, width, height
 
     # -----------------------------------------------------------------
     # Writes and execution

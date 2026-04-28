@@ -8,8 +8,6 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 ### Added
 
-- First public `v0.1.0-alpha` tag pending.
-
 - **Lifecycle tools**: `create_machine` (spawns a BBC B session with optional disc autoboot), `destroy_machine` (clean teardown with SIGKILL fallback).
 
 - **Execution tools**: `run_for_cycles` (advance by exactly N BBC cycles, anchored on the current cycles register), `run_until_text` (chunk-based run until a needle appears in the MODE 7 screen).
@@ -50,7 +48,9 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - **Pre-MOS-init screen capture**: `captureMode7Bytes` now tolerates an uninitialised `&0350/&0351` pointer (typical value `0xFFFF` at cold boot) by clamping to the page base. Lets `run_until_prompt` poll through the boot phase without raising.
 
-- **Tests**: pytest suite covering driver-level primitives, MODE 7 decode, keyboard matrix, and end-to-end HELLO round trip over both driver and MCP.
+- **`screenshot` MCP tool**: capture the current rendered BBC screen as a base64-encoded PNG, in any display mode. The driver spawns beebjit with `-headless-render` and `-opt video:always-render`, asks the debugger for a BGRA dump via `savescreen`, and a stdlib `_png` module turns those bytes into a PNG with no third-party dependency. Width and height come from beebjit's own savescreen output line so a future render-geometry change flows through automatically.
+
+- **Tests**: pytest suite covering driver-level primitives, MODE 7 decode, keyboard matrix, screenshot capture, and end-to-end HELLO round trip over both driver and MCP.
 
 - **Documentation**: `docs/` directory with architecture, tool reference, session lifecycle, debugger protocol, emulator modes, keypress timing, MODE 7 decode, troubleshooting, development, licensing. README covers install and quickstart.
 
@@ -60,7 +60,7 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - Upstream beebjit is not supported; the server requires the fork's `-log-stderr` flag. See [binary discovery](docs/binary-discovery.md).
 
-- `screenshot`, `reset`, and `load_disc` (post-boot) are not yet wired through the MCP surface. `reset` is blocked on the absence of a beebjit debugger reset command; `load_disc` would require a subprocess respawn because beebjit only accepts discs via the `-0` spawn flag (use `destroy_machine` + `create_machine(disc=...)` for now). `screenshot` is deferred until the per-mode bitmap decoders are in. See `docs/tool-reference.md#unavailable-tools`.
+- `reset` and `load_disc` (post-boot) are not implemented.
 
 - `type_input` runs ~10M BBC cycles per character (HOLD=5M + GAP=5M). At `-fast` that is a few ms per character on a modern host; long scripted input (~1000 chars) takes low-single-digit seconds of host time.
 
@@ -70,4 +70,4 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - FastMCP has no shutdown hook; abandoned sessions in `_sessions` leak on server exit. Client-side `destroy_machine` in a `finally` block is the mitigation.
 
-- No Windows or macOS CI. Linux x86-64 is the primary target; other platforms may work but are not continuously tested.
+- No Windows or macOS CI. Linux x86-64 is the primary target; other platforms may work but are not tested.

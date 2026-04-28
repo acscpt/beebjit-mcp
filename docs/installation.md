@@ -20,11 +20,17 @@ The steps to get there are:
 
 ## Install beebjit
 
-beebjit-MCP requires the [acscpt/beebjit](https://github.com/acscpt/beebjit) fork. The fork carries two changes against upstream beebjit:
+beebjit-MCP requires the [acscpt/beebjit](https://github.com/acscpt/beebjit) fork. The fork carries the following changes against upstream beebjit:
 
 1. A `-log-stderr` flag that routes beebjit's internal logging to stderr instead of stdout, leaving the stdout stream as a clean source of debugger output for the MCP driver to parse.
 
 2. A fix to beebjit's memory allocation that resolves intermittent allocation failures observed at certain segment sizes.
+
+3. A `-headless-render` flag that allocates the BGRA render buffer in headless mode, which the [`screenshot`](tool-reference.md#screenshot) tool requires.
+
+4. A `savescreen <path>` debugger command that dumps the current render buffer as a raw BGRA file. The MCP server reads this file, converts to PNG, and returns the bytes through `screenshot`.
+
+The minimum fork version that ships these changes is `v0.9.8-acscpt.2`. Earlier binaries work for every other tool but `screenshot` will surface a "no render buffer" error.
 
 There are two ways to obtain [acscpt/beebjit](https://github.com/acscpt/beebjit).
 

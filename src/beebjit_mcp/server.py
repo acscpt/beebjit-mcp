@@ -23,11 +23,12 @@ Binary discovery order:
 3. hard error with a clear message pointing at install docs
 
 No auto-download, no bundling: the user installs beebjit themselves
-(licence-motivated -- see CLAUDE.md).
+(licence-motivated -- see docs/architecture.md).
 """
 
 from __future__ import annotations
 
+import base64
 import importlib
 import os
 import shutil
@@ -37,6 +38,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from beebjit_mcp._png import bgraToPng
 from beebjit_mcp.driver import BeebjitDriver
 from beebjit_mcp.keyboard import BBC_KEY_CAPS_LOCK, resolveKeyName
 from beebjit_mcp.screen import decodeMode7
@@ -572,6 +574,35 @@ def read_mode7_text(session_id: str) -> dict[str, object]:
     fb = drv.captureMode7Bytes()
     rows = decodeMode7(fb)
     return {"rows": rows, "text": "\n".join(rows)}
+
+
+@mcp.tool()
+def screenshot(session_id: str) -> dict[str, object]:
+    """Capture the current rendered BBC screen as a PNG.
+
+    Returns base64-encoded PNG bytes plus the rendered width and
+    height in pixels. Works in any BBC display mode: beebjit does
+    the rendering, this tool just packages the result. Requires a
+    fork binary that supports `-headless-render` and the
+    `savescreen` debugger command; older binaries surface a
+    structured error pointing at the install docs.
+    """
+
+    drv = _getDriver(session_id)
+
+    # captureScreen returns BGRA + dimensions parsed from beebjit's
+    # own savescreen line, so MCP-side never has to guess at the
+    # render geometry.
+    bgra, width, height = drv.captureScreen()
+
+    png = bgraToPng(bgra, width, height)
+
+    return {
+        "format": "png",
+        "bytes": base64.b64encode(png).decode("ascii"),
+        "width": width,
+        "height": height,
+    }
 
 
 # -----------------------------------------------------------------------
