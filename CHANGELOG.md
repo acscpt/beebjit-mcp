@@ -50,6 +50,8 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - **`screenshot` MCP tool**: capture the current rendered BBC screen as a base64-encoded PNG, in any display mode. The driver spawns beebjit with `-headless-render` and `-opt video:always-render`, asks the debugger for a BGRA dump via `savescreen`, and a stdlib `_png` module turns those bytes into a PNG with no third-party dependency. Width and height come from beebjit's own savescreen output line so a future render-geometry change flows through automatically.
 
+- **`read_mode7_text` controls parameter**: optional `controls` selects how non-printable bytes render. `"space"` (default) and `"question"` keep rows at 40 chars wide; `"escape"` emits `\xNN` per non-printable byte for callers needing the original byte value preserved in the decoded string.  Mode7Controls enum added.
+
 - **Tests**: pytest suite covering driver-level primitives, MODE 7 decode, keyboard matrix, screenshot capture, and end-to-end HELLO round trip over both driver and MCP.
 
 - **Documentation**: `docs/` directory with architecture, tool reference, session lifecycle, debugger protocol, emulator modes, keypress timing, MODE 7 decode, troubleshooting, development, licensing. README covers install and quickstart.

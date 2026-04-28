@@ -4,7 +4,7 @@
 
 MODE 7 is the one BBC display mode where text capture is straightforward. The bitmapped modes (0-6) store pixel data, which would need per-mode rendering and glyph tables to turn back into characters. MODE 7, by contrast, stores teletext character codes directly in screen memory, so extracting text is a memory read plus a byte-to-character map on the Python side. No emulator cooperation is needed beyond the `m` (memory dump) debugger command.
 
-The decoder is text-only. Printable ASCII passes through untouched. Teletext control codes, graphics glyphs, uninitialised memory, and any other non-printable byte all render as a single space. That is enough for BASIC prompt output, INPUT lines, PRINT-driven text, and any other text-mode BBC output. Visual teletext features such as colour, flash, and double-height are not preserved.
+The decoder is text-only. Printable ASCII passes through untouched. Teletext control codes, graphics glyphs, uninitialised memory, and any other non-printable byte render per the `controls` parameter (default `space`). That is enough for BASIC prompt output, INPUT lines, PRINT-driven text, and any other text-mode BBC output. Visual teletext features such as colour, flash, and double-height are not preserved.
 
 ## MODE 7 on the BBC
 
@@ -45,21 +45,25 @@ The teletext character set overlaps ASCII but is not identical. Three ranges mat
 
 ## Decoder behaviour
 
-`decodeMode7` is a pure function from 1000 bytes to 25 strings of exactly 40 characters. Printable ASCII passes through. Every other byte becomes a single space.
+`decodeMode7` is a pure function from 1000 bytes to 25 rows. Printable ASCII passes through. Every other byte renders per the `controls` parameter, a `Mode7Controls` enum member from `screen.py`:
+
+- `Mode7Controls.SPACE` (default): single space per non-printable byte. Every row stays exactly 40 characters wide. Best for substring assertions and column-indexing callers; covers teletext control codes, uninitialised memory (`0xFF` after boot, before the first screen paint), graphics glyphs, and non-printable ASCII in one stroke. With this mode any non-space character in the output is real BBC-written content.
+
+- `Mode7Controls.QUESTION`: single `?` per non-printable byte. Rows stay 40-wide. Lets callers spot non-printable cells visually without decoding the byte value.
+
+- `Mode7Controls.ESCAPE`: four-character `\xNN` escape per non-printable byte. Row widths become variable. Use when callers need to round-trip the original byte value out of the decoded string.
 
 ```python
-def decodeMode7(framebuffer: bytes) -> list[str]:
-    ...
-    for r in range(25):
-        rowBytes = framebuffer[r * 40 : (r + 1) * 40]
-        rowText = "".join(
-            chr(b) if 0x20 <= b <= 0x7E else " " for b in rowBytes
-        )
-        rows.append(rowText)
-    return rows
+from beebjit_mcp.screen import Mode7Controls, decodeMode7
+
+# Default: spaces for control bytes, 40-char rows
+rows = decodeMode7(framebuffer)
+
+# Inspect raw bytes round-tripped into the decoded string
+rows = decodeMode7(framebuffer, controls=Mode7Controls.ESCAPE)
 ```
 
-Rows are returned at full 40-character width, not right-stripped, so column alignment is preserved. The space rule covers teletext control codes, uninitialised memory (`0xFF` after boot, before the first screen paint), graphics glyphs, and non-printable ASCII in one stroke. The caller can treat any non-space character in the output as real BBC-written content.
+`Mode7Controls` is a `(str, Enum)`, so the JSON wire format `"space"` / `"question"` / `"escape"` is accepted directly by the MCP tool and converted to the matching member before the decoder runs.
 
 ## What the decoder does not render
 

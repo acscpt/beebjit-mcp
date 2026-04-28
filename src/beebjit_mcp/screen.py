@@ -18,19 +18,57 @@ Teletext encoding notes, relevant to what we choose to decode:
   set, flash, double-height, graphics-mode toggle. In MODE 7 these
   occupy screen cells (they are *not* interleaved out-of-band)
 * A control code leaves its cell visually blank, so rendering them
-  as space preserves column alignment, which is what human readers
-  and text assertions both want
-
-v0.1 scope: printable ASCII passes through, anything else becomes
-space. Richer decoding (colour, graphics glyphs) is not needed for
-text-based assertions and is deferred.
+  as a single character (space or `?`) preserves the 40-column
+  alignment human readers and text assertions both want; rendering
+  them as a `\\xNN` escape preserves the byte value at the cost of
+  variable cell width
 
 Functions:
-    decodeMode7        -- framebuffer -> 25 rows of 40-char strings
+    decodeMode7        -- framebuffer -> 25 rows; control-byte
+                          rendering selected by `controls`
     mode7TextContains  -- convenience wrapper for substring matching
 """
 
 from __future__ import annotations
+
+from enum import Enum
+
+
+# -----------------------------------------------------------------------
+# Public enum
+# -----------------------------------------------------------------------
+
+class Mode7Controls(str, Enum):
+    """Selector for how `decodeMode7` renders non-printable bytes.
+
+    Values are the wire-format strings used by the MCP tool and any
+    JSON consumer; Pydantic accepts those strings and coerces them
+    to enum members before our code sees them. Direct Python callers
+    use the members directly so typos are caught at parse time
+    rather than as a runtime ValueError.
+
+    The `(str, Enum)` base means each member also IS its string
+    value: `Mode7Controls.SPACE == "space"` is True, and JSON
+    serialisation, logging, and dict round-trips return the string
+    form without needing `.value` extraction. Internal dispatch
+    relies on this equality, so a stray raw string from a loose
+    integration still routes correctly while a typo'd string
+    fails to match any branch.
+    """
+
+    # Single space per non-printable byte. Rows stay 40 chars wide.
+    # Best for substring assertions and column-indexing callers.
+    SPACE = "space"
+
+    # Single `?` per non-printable byte. Rows stay 40 chars wide.
+    # Best when callers want non-printable cells visually distinct
+    # without decoding the byte value.
+    QUESTION = "question"
+
+    # Four-character `\\xNN` escape per non-printable byte. Row
+    # widths become variable. Best when callers need the original
+    # byte value preserved in the decoded string.
+    ESCAPE = "escape"
 
 
 # -----------------------------------------------------------------------
@@ -55,16 +93,22 @@ MODE7_PAGE_MASK: int = MODE7_PAGE_BYTES - 1
 # Public API
 # -----------------------------------------------------------------------
 
-def decodeMode7(framebuffer: bytes) -> list[str]:
-    """Decode a 1000-byte MODE 7 framebuffer into 25 rows of 40 chars.
+def decodeMode7(
+    framebuffer: bytes, controls: Mode7Controls = Mode7Controls.SPACE
+) -> list[str]:
+    """Decode a 1000-byte MODE 7 framebuffer into 25 rows.
 
-    Non-printable bytes render as a single space so column alignment
-    is preserved. Rows are not right-stripped; every returned string
-    is exactly `MODE7_COLS` characters, which keeps caller-side
-    column-indexing straightforward.
+    Non-printable bytes render per `controls` (see the
+    `Mode7Controls` enum for the available members and their
+    semantics). Rows are not right-stripped, so column-indexing
+    into the SPACE or QUESTION outputs stays straightforward; the
+    ESCAPE variant produces variable-width rows.
 
     Raises `ValueError` if the framebuffer is not exactly
-    `MODE7_BYTES` long.
+    `MODE7_BYTES` long. Invalid `controls` values are impossible
+    by construction: the type system rejects non-members at the
+    call site, and Pydantic rejects unknown wire-format strings
+    before they reach this function.
     """
 
     # Length check up front: callers typically pass the result of a
@@ -84,17 +128,42 @@ def decodeMode7(framebuffer: bytes) -> list[str]:
     # the output directly indexable by BBC row number.
     for r in range(MODE7_ROWS):
         rowBytes = framebuffer[r * MODE7_COLS : (r + 1) * MODE7_COLS]
-
-        # Printable ASCII passes through; everything else (teletext
-        # control codes, uninitialised memory, mode switches) becomes
-        # a space so screen columns remain aligned for humans.
-        rowText = "".join(
-            chr(b) if 0x20 <= b <= 0x7E else " " for b in rowBytes
-        )
-
-        rows.append(rowText)
+        rows.append(_renderMode7Row(rowBytes, controls))
 
     return rows
+
+
+def _renderMode7Row(rowBytes: bytes, controls: Mode7Controls) -> str:
+    """Render one MODE 7 row of bytes per the controls policy.
+
+    Equality (`==`) rather than identity so the dispatch survives an
+    `importlib.reload` of this module: a stale function holding an
+    old `Mode7Controls.SPACE` default keeps working against the new
+    class because str-Enum members compare by string value. Typos
+    still cannot dispatch because `"spcae" == Mode7Controls.SPACE`
+    is False.
+
+    The final NotImplementedError is unreachable as long as every
+    `Mode7Controls` member has its own branch; an unhandled member
+    surfaces loudly at the first call rather than as a silent
+    fallback.
+    """
+
+    if controls == Mode7Controls.SPACE:
+        return "".join(
+            chr(b) if 0x20 <= b <= 0x7E else " " for b in rowBytes
+        )
+    if controls == Mode7Controls.QUESTION:
+        return "".join(
+            chr(b) if 0x20 <= b <= 0x7E else "?" for b in rowBytes
+        )
+    if controls == Mode7Controls.ESCAPE:
+        return "".join(
+            chr(b) if 0x20 <= b <= 0x7E else f"\\x{b:02X}" for b in rowBytes
+        )
+    raise NotImplementedError(
+        f"no renderer for Mode7Controls member {controls!r}"
+    )
 
 
 def rotateMode7Page(page: bytes, startAddr: int) -> bytes:

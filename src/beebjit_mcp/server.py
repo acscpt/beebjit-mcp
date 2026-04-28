@@ -41,7 +41,7 @@ from mcp.server.fastmcp import FastMCP
 from beebjit_mcp._png import bgraToPng
 from beebjit_mcp.driver import BeebjitDriver
 from beebjit_mcp.keyboard import BBC_KEY_CAPS_LOCK, resolveKeyName
-from beebjit_mcp.screen import decodeMode7
+from beebjit_mcp.screen import Mode7Controls, decodeMode7
 
 
 # -----------------------------------------------------------------------
@@ -558,13 +558,29 @@ def read_registers(session_id: str) -> dict[str, object]:
 
 
 @mcp.tool()
-def read_mode7_text(session_id: str) -> dict[str, object]:
-    """Capture the MODE 7 screen as 25 rows of 40-char text.
+def read_mode7_text(
+    session_id: str, controls: Mode7Controls = Mode7Controls.SPACE
+) -> dict[str, object]:
+    """Capture the MODE 7 screen as 25 rows of teletext text.
 
-    Non-printable bytes render as space so teletext control codes
-    do not break column alignment. Returns both the raw row list
-    and a `\\n`-joined single string for callers that prefer one
-    or the other.
+    `controls` selects how non-printable bytes render:
+
+    - "space" (default): single space, every row stays exactly 40
+      characters wide. Best for substring assertions and any caller
+      that indexes into rows by column.
+    - "question": single `?`, every row stays exactly 40 characters
+      wide. Useful when callers want non-printable cells visually
+      distinct without decoding the byte value.
+    - "escape": four-character `\\xNN` escape per non-printable
+      byte. Row widths become variable; use when callers need the
+      original byte value preserved in the decoded string.
+
+    JSON callers send these as the literal strings; Pydantic
+    coerces them to `Mode7Controls` members before this function
+    runs, and rejects unknown values at the wire boundary.
+
+    Returns both the raw row list and a `\\n`-joined single string
+    so callers can use whichever view they prefer.
     """
 
     drv = _getDriver(session_id)
@@ -572,7 +588,7 @@ def read_mode7_text(session_id: str) -> dict[str, object]:
     # One read, one decode. Keeping both views (rows + joined) is
     # cheap and saves callers a common composition step.
     fb = drv.captureMode7Bytes()
-    rows = decodeMode7(fb)
+    rows = decodeMode7(fb, controls=controls)
     return {"rows": rows, "text": "\n".join(rows)}
 
 

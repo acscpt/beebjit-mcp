@@ -1,6 +1,8 @@
 # Tool reference
 
-This is the human-facing reference for the MCP tools the server exposes. The agent's actual view comes from the live schema served at runtime via `tools/list`, derived from the FastMCP decorators in `src/beebjit_mcp/server.py`. This document mirrors that schema and adds the prose context (purpose, edge cases, composition guidance) that the schema cannot carry. If the document and the live schema diverge, the schema wins.
+This is the human-facing reference for the MCP tools the server exposes. The agent's actual view comes from the live schema served at runtime via `tools/list`, derived from the FastMCP decorators in `src/beebjit_mcp/server.py`.
+
+This document mirrors that schema and adds the prose context (purpose, edge cases, composition guidance) that the schema cannot carry. If the document and the live schema diverge, the schema wins.
 
 Every tool takes a JSON object and returns a JSON object. `session_id` identifies which BBC Micro to act on and comes back from `create_machine`. Calls are serialised end-to-end: each tool call is one request, one response, and the server does not run two tool bodies in parallel against the same session.
 
@@ -309,9 +311,9 @@ Low-level matrix events with no automatic timing.
 **Parameters**
 
 - `key`: One of:
-    - A raw integer key code (0-255).
-    - A single-character string; letters are upper-cased so `"a"` and `"A"` both hit matrix position 65.
-    - A symbolic name from `SPECIAL_KEYS`: `ESCAPE`, `BACKSPACE`, `TAB`, `RETURN`, `CTRL`, `SHIFT_LEFT`, `SHIFT_RIGHT`, `CAPS_LOCK`, `F0`-`F9`, `F11`, `F12`, `UP_ARROW`, `DOWN_ARROW`, `LEFT_ARROW`, `RIGHT_ARROW`, `DELETE`, `HOME`, `RELEASE_ALL`. Case-insensitive.
+  - A raw integer key code (0-255).
+  - A single-character string; letters are upper-cased so `"a"` and `"A"` both hit matrix position 65.
+  - A symbolic name from `SPECIAL_KEYS`: `ESCAPE`, `BACKSPACE`, `TAB`, `RETURN`, `CTRL`, `SHIFT_LEFT`, `SHIFT_RIGHT`, `CAPS_LOCK`, `F0`-`F9`, `F11`, `F12`, `UP_ARROW`, `DOWN_ARROW`, `LEFT_ARROW`, `RIGHT_ARROW`, `DELETE`, `HOME`, `RELEASE_ALL`. Case-insensitive.
 
 **Returns**
 
@@ -494,18 +496,29 @@ Return 6502 register state.
 
 ### `read_mode7_text`
 
-Capture the MODE 7 screen as 25 rows of 40 characters.
+Capture the MODE 7 screen as 25 rows of teletext text.
+
+**Parameters**
+
+- `controls` *(string, default `"space"`)*: Selects how non-printable bytes render. One of:
+  - `"space"`: single space per non-printable byte. Every row stays exactly 40 characters wide. Best for substring assertions and any caller that indexes into rows by column.
+  - `"question"`: single `?` per non-printable byte. Rows stay 40-wide. Useful when callers want non-printable cells visually distinct without decoding the byte value.
+  - `"escape"`: four-character `\xNN` escape per non-printable byte. Row widths become variable. Use when callers need the original byte value preserved in the decoded string.
 
 **Returns**
 
-- `rows` *(array of strings)*: Always exactly 25 strings of exactly 40 characters each.
+- `rows` *(array of strings)*: Always exactly 25 strings. Width is exactly 40 characters under `"space"` and `"question"`; variable under `"escape"`.
 - `text` *(string)*: The same content with `\n` between rows, for convenient substring searching.
+
+**Errors**
+
+- Unknown `controls` value returns a structured error. Use one of the three documented strings.
 
 **Example**
 
 ```json
 // Request
-{"session_id": "<uuid>"}
+{"session_id": "<uuid>", "controls": "space"}
 
 // Response
 {
@@ -514,9 +527,18 @@ Capture the MODE 7 screen as 25 rows of 40 characters.
 }
 ```
 
-**Notes**
+```json
+// Request: same screen, escape mode
+{"session_id": "<uuid>", "controls": "escape"}
 
-Non-printable bytes (teletext control codes, uninitialised memory, graphics glyphs) render as space so column alignment is preserved.
+// Response: a control byte 0x80 followed by 'A' renders as `\x80A`
+{
+  "rows": ["\\x80A...", "..."],
+  "text": "\\x80A...\n..."
+}
+```
+
+**Notes**
 
 The decode is CRTC-scroll-aware. On a BBC the MODE 7 framebuffer sits in a 1024-byte page at `&7C00-&7FFF`. Only 1000 bytes are visible at any time. Hardware scrolling advances the display-start pointer, and the MOS caches it at `&0350/&0351`. The driver reads the whole 1024-byte page plus the pointer, rotates the page into display order, and feeds the 1000 display bytes to the decoder. See [MODE 7 decode](mode7-decode.md) for detail.
 
@@ -556,7 +578,7 @@ Capture the current rendered BBC screen as a PNG.
 
 **Notes**
 
-beebjit renders the BBC screen into a BGRA framebuffer. The driver asks for the buffer via the `savescreen` debugger command, parses the dimensions from beebjit's own output line, and the server converts the BGRA pixel data into a PNG using a stdlib encoder. This is mode-agnostic, so MODE 7, MODE 1, MODE 4, all return a complete rendered screen with no MCP-side per-mode logic.
+beebjit renders the BBC screen into a BGRA framebuffer. The driver asks for the buffer via the `savescreen` debugger command, parses the dimensions from beebjit's own output line, and the server converts the BGRA pixel data into a PNG. This is mode-agnostic, so MODE 7, MODE 1, MODE 4, all return a complete rendered screen with no MCP-side per-mode logic.
 
 The PNG is the rendered display, not the raw BBC framebuffer bytes. Hardware scroll, palette, and any video ULA effects are baked in at capture time. Callers wanting the raw screen RAM should use [`read_memory`](#read_memory) at the appropriate mode-base address instead.
 
@@ -577,9 +599,9 @@ Disassemble 6502 instructions starting at `addr`.
 
 - `ok` *(boolean)*: `true` on success.
 - `instructions` *(array of objects)*: Each object has:
-    - `addr` *(integer)*: Address of the instruction.
-    - `info` *(string)*: beebjit's per-line tag (`"ITRP"` for interrupt, `"JIT"` for compiled code, sometimes empty).
-    - `text` *(string)*: Mnemonic and operands as beebjit prints them.
+  - `addr` *(integer)*: Address of the instruction.
+  - `info` *(string)*: beebjit's per-line tag (`"ITRP"` for interrupt, `"JIT"` for compiled code, sometimes empty).
+  - `text` *(string)*: Mnemonic and operands as beebjit prints them.
 
 **Example**
 

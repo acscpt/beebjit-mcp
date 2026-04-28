@@ -11,6 +11,7 @@ from beebjit_mcp.screen import (
     MODE7_COLS,
     MODE7_PAGE_BYTES,
     MODE7_ROWS,
+    Mode7Controls,
     decodeMode7,
     mode7TextContains,
     rotateMode7Page,
@@ -97,3 +98,68 @@ def testContainsMatchesAcrossRowsJoin() -> None:
     fb[MODE7_COLS * 5 : MODE7_COLS * 5 + 5] = b"HELLO"
     assert mode7TextContains(bytes(fb), "HELLO")
     assert not mode7TextContains(bytes(fb), "GOODBYE")
+
+
+# -----------------------------------------------------------------------
+# controls parameter
+# -----------------------------------------------------------------------
+
+def testControlsSpaceMatchesDefault() -> None:
+    fb = bytearray(0x00 for _ in range(MODE7_BYTES))
+    fb[0:5] = b"HELLO"
+    rows = decodeMode7(bytes(fb), controls=Mode7Controls.SPACE)
+    assert rows == decodeMode7(bytes(fb))
+    assert rows[0] == "HELLO" + " " * (MODE7_COLS - 5)
+    assert all(len(r) == MODE7_COLS for r in rows)
+
+
+def testControlsQuestionRendersControlBytesAsQuestionMarks() -> None:
+    fb = bytearray(0x00 for _ in range(MODE7_BYTES))
+    fb[0:5] = b"HELLO"
+    rows = decodeMode7(bytes(fb), controls=Mode7Controls.QUESTION)
+    assert rows[0] == "HELLO" + "?" * (MODE7_COLS - 5)
+    # Width invariant holds for QUESTION mode just like SPACE.
+    assert all(len(r) == MODE7_COLS for r in rows)
+
+
+def testControlsEscapeRendersControlBytesAsHexEscape() -> None:
+    fb = bytearray(0x00 for _ in range(MODE7_BYTES))
+    fb[0:5] = b"HELLO"
+    fb[5] = 0x80
+    fb[6] = 0x1F
+    rows = decodeMode7(bytes(fb), controls=Mode7Controls.ESCAPE)
+    # First six visible bytes round-trip into HELLO + escapes for
+    # 0x80 and 0x1F. Every remaining 0x00 expands to "\\x00".
+    expected = "HELLO" + "\\x80" + "\\x1F" + "\\x00" * (MODE7_COLS - 7)
+    assert rows[0] == expected
+    # Width is intentionally variable in ESCAPE mode: a row of all
+    # control bytes expands to 4 chars per cell.
+    assert len(rows[1]) == MODE7_COLS * 4
+
+
+def testControlsEscapeLeavesPrintableBytesUntouched() -> None:
+    # Pure-printable row stays the same width and content as
+    # SPACE/QUESTION output, since no substitution fires.
+    fb = bytearray(0x20 for _ in range(MODE7_BYTES))
+    fb[0:5] = b"HELLO"
+    rows = decodeMode7(bytes(fb), controls=Mode7Controls.ESCAPE)
+    assert rows[0] == "HELLO" + " " * (MODE7_COLS - 5)
+    assert all(len(r) == MODE7_COLS for r in rows)
+
+
+def testControlsEscapeUsesUppercaseHex() -> None:
+    fb = bytearray(0x20 for _ in range(MODE7_BYTES))
+    fb[0] = 0xAB
+    rows = decodeMode7(bytes(fb), controls=Mode7Controls.ESCAPE)
+    # Lowercase variant would be `\\xab`; uppercase keeps escapes
+    # visually distinct from the printable-ASCII glyphs around them.
+    assert rows[0].startswith("\\xAB")
+
+
+def testMode7ControlsValuesAreWireFormatStrings() -> None:
+    # Members IS their string value because of the (str, Enum) base.
+    # MCP wire format depends on this round-trip working both ways.
+    assert Mode7Controls.SPACE == "space"
+    assert Mode7Controls.QUESTION == "question"
+    assert Mode7Controls.ESCAPE == "escape"
+    assert Mode7Controls("space") is Mode7Controls.SPACE
