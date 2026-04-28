@@ -13,6 +13,7 @@ stateDiagram-v2
     [*] --> None: server startup
     None --> Created: create_machine
     Created --> Created: run_for_cycles,<br/>type_input,<br/>read_*,<br/>run_until_text
+    Created --> Created: reset
     Created --> None: destroy_machine
     Created --> Crashed: subprocess exits<br/>mid-command
     Crashed --> None: destroy_machine<br/>(idempotent)
@@ -109,6 +110,47 @@ sequenceDiagram
 `destroy_machine` is idempotent. Calling it twice for the same id returns `{"ok": false}` the second time, which signals "already gone". Double-destroy on a retried client is safe.
 
 On the clean path, the server sends `q`, beebjit calls `exit(0)`, stdout closes, and the driver reaps the child within 5 seconds. If beebjit does not exit in that window (for example, if it is deadlocked mid-instruction), the driver escalates to `SIGKILL` and waits unconditionally. Reader threads are joined last, so a returning `destroy_machine` means the subprocess and all its pipes are fully released.
+
+## `reset`
+
+`reset` hard-resets the BBC without ending the session. The subprocess and its pipes are unaffected, the same `session_id` continues to work after the call returns. From the client's point of view the BBC has been freshly booted: the 6502 cycle counter has wrapped near zero, BASIC variables and the program are gone, and the boot banner is back at row 1 of MODE 7 screen RAM.
+
+```mermaid
+sequenceDiagram
+    participant C as client
+    participant S as server
+    participant D as driver
+    participant B as beebjit
+
+    C->>S: reset id (autoboot?)
+    S->>D: reset(autoboot)
+    opt autoboot
+        D->>B: keydown 133 (SHIFT)
+    end
+    D->>B: keydown 152 (F12 = BREAK)
+    D->>B: breakat X; c
+    Note over B: CPU held in RES,<br/>cycle counter frozen
+    B-->>D: prompt
+    D->>B: keyup 152
+    opt autoboot
+        D->>B: keyup 133
+    end
+    loop until banner reappears
+        D->>B: read MODE 7 row 1
+        D->>B: breakat Y; c
+        Note over B: OS reset code runs
+    end
+    D-->>S: done
+    S-->>C: {"ok": true}
+```
+
+The mechanism is keypress synthesis. F12 is what beebjit accepts for the BBC BREAK key, so injecting `keydown 152` and running briefly with it asserted puts the 6502 into RES. Releasing it lets the OS reset path run, and the driver polls screen RAM until "BBC Computer" reappears.
+
+`autoboot=true` brackets the BREAK with SHIFT, matching the BBC SHIFT+BREAK convention that runs an inserted disc's `!BOOT`. SHIFT held during reset is harmless on a session created without a disc, the OS comes up at the BASIC prompt regardless.
+
+The call blocks until the banner is back. Total wallclock time is on the order of a few hundred milliseconds. If the banner does not reappear within 30 seconds, the call raises rather than returning silently, on the assumption that something is genuinely wrong with either the BBC's reset path or the driver's screen polling.
+
+After `reset` returns, the session is back in steady state. Any prior tool call's effect on the BBC (typed input, written memory, set breakpoints) is gone, everything outside the BBC (the driver, the subprocess, the session id, the per-session temp directory used by `screenshot`) survives.
 
 ## Error modes
 

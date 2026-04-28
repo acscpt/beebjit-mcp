@@ -14,6 +14,7 @@ The project is pre-alpha. Tool names, parameter lists, and return shapes can cha
 | --- | --- | --- |
 | [`create_machine`](#create_machine) | Lifecycle | Boot a fresh BBC Micro session |
 | [`destroy_machine`](#destroy_machine) | Lifecycle | Tear a session down and release the subprocess |
+| [`reset`](#reset) | Lifecycle | Hard-reset the BBC without destroying the session |
 | [`run_for_cycles`](#run_for_cycles) | Execution | Advance the emulator by exactly N BBC cycles |
 | [`run_until_text`](#run_until_text) | Execution | Run until a substring appears in the MODE 7 screen |
 | [`run_until_prompt`](#run_until_prompt) | Execution | Run until a prompt character at the start of a row |
@@ -105,6 +106,44 @@ Tear a session down and release the beebjit subprocess.
 **Notes**
 
 The teardown sends `q` to the debugger, waits up to five seconds for beebjit to exit cleanly, and escalates to `SIGKILL` if the process is still alive. The `false` path is not an error condition. Double-destroy from a retrying client returns `{"ok": false}` cleanly without crashing the server.
+
+[^ Index](#index)
+
+### `reset`
+
+Hard-reset the running BBC without tearing down the session. Equivalent to a user pressing the BREAK key on the real keyboard. The 6502 cycle counter wraps, BASIC variables and the current program are cleared, and the boot banner reappears. The MCP session id stays valid; subsequent tool calls hit the same session.
+
+**Parameters**
+
+- `autoboot` *(boolean, default `false`)*: hold SHIFT across the BREAK so an inserted disc's `!BOOT` runs as the OS comes up. The BBC convention of SHIFT+BREAK.
+
+**Returns**
+
+- `ok` *(boolean)*: always `true` on completion.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>"}
+
+// Response
+{"ok": true}
+```
+
+```json
+// Disc autoboot variant
+{"session_id": "<uuid>", "autoboot": true}
+
+// Response
+{"ok": true}
+```
+
+**Notes**
+
+The reset blocks until the boot banner is back in MODE 7 screen RAM, so the call returns with the BBC at a fresh BASIC prompt (or whatever the autoboot disc landed on). If the banner does not reappear within thirty seconds, the call raises rather than returning silently.
+
+`autoboot=true` only matters if a disc was inserted at `create_machine` time. Without a disc, the SHIFT held during BREAK is harmless and the OS comes up at the BASIC prompt as usual.
 
 [^ Index](#index)
 

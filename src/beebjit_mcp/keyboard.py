@@ -72,6 +72,11 @@ BBC_KEY_DELETE: int = 156
 BBC_KEY_HOME: int = 157
 BBC_KEY_RELEASE_ALL: int = 255
 
+# F12 is what beebjit accepts for the BBC BREAK key (per beebjit's
+# EXAMPLES file). Aliased so callers building a "reset" path do not
+# need to know the F-key encoding.
+BBC_KEY_BREAK: int = BBC_KEY_F12
+
 
 # Public name -> code map. Names are the form callers pass to
 # `key_down` / `key_up` MCP tools. Case-insensitive at the public
@@ -105,6 +110,7 @@ SPECIAL_KEYS: dict[str, int] = {
     "DELETE": BBC_KEY_DELETE,
     "HOME": BBC_KEY_HOME,
     "RELEASE_ALL": BBC_KEY_RELEASE_ALL,
+    "BREAK": BBC_KEY_BREAK,
 }
 
 

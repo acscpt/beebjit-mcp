@@ -97,3 +97,24 @@ def testDriverCaptureScreenRaisesIfNotStarted(tmp_path: Path) -> None:
     drv = BeebjitDriver(Path("/nonexistent/beebjit"))
     with pytest.raises(BeebjitError, match="not started"):
         drv.captureScreen()
+
+
+def testDriverResetWrapsCycleCounter(beebjitBinary: Path) -> None:
+    # The 6502 cycle counter wraps near zero on a real RESET. Drive
+    # the BBC well past the initial boot so the pre-reset cycle
+    # count is high, then call reset and verify the counter has
+    # restarted. A no-op reset would leave the counter monotonic.
+    with BeebjitDriver(beebjitBinary) as drv:
+        drv.runCycles(5_000_000)
+        drv.typeText("LET A=42\n")
+        drv.runCycles(2_000_000)
+
+        regsBefore = drv.readRegisters()
+        cyclesBefore = int(regsBefore["cycles"])
+        assert cyclesBefore > 5_000_000, cyclesBefore
+
+        drv.reset()
+
+        regsAfter = drv.readRegisters()
+        cyclesAfter = int(regsAfter["cycles"])
+        assert cyclesAfter < cyclesBefore, (cyclesBefore, cyclesAfter)

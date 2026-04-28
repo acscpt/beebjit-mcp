@@ -193,6 +193,24 @@ def destroy_machine(session_id: str) -> dict[str, bool]:
     return {"ok": True}
 
 
+@mcp.tool()
+def reset(
+    session_id: str,
+    autoboot: bool = False,
+) -> dict[str, bool]:
+    """Hard-reset the BBC without destroying the session.
+
+    Equivalent to a user pressing BREAK on the real keyboard.
+    With `autoboot=True`, holds SHIFT across the BREAK so an
+    inserted disc's `!BOOT` runs after reset (the BBC equivalent
+    of SHIFT+BREAK).
+    """
+
+    drv = _getDriver(session_id)
+    drv.reset(autoboot=autoboot)
+    return {"ok": True}
+
+
 # -----------------------------------------------------------------------
 # Execution tools
 # -----------------------------------------------------------------------

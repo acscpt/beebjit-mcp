@@ -53,7 +53,12 @@ import time
 from pathlib import Path
 from types import TracebackType
 
-from beebjit_mcp.keyboard import BBC_KEY_SHIFT_LEFT, asciiToKeys, asciiToKeysRaw
+from beebjit_mcp.keyboard import (
+    BBC_KEY_BREAK,
+    BBC_KEY_SHIFT_LEFT,
+    asciiToKeys,
+    asciiToKeysRaw,
+)
 from beebjit_mcp.screen import (
     MODE7_BASE_ADDR,
     MODE7_BYTES,
@@ -821,6 +826,64 @@ class BeebjitDriver:
 
         self.sendCommand(f"breakat {target}")
         self.sendCommand("c", timeout=timeout)
+
+    def reset(
+        self,
+        autoboot: bool = False,
+        timeout: float = 30.0,
+    ) -> None:
+        """Hard-reset the BBC by tapping F12 (the BREAK key).
+
+        With `autoboot=True`, holds left-SHIFT across the BREAK so
+        the OS runs the inserted disc's `!BOOT`. Blocks until the
+        boot banner reappears in screen RAM or `timeout` expires.
+
+        Recon showed that the post-RESET execution flow does not fit
+        `runCycles`'s cycle-anchored `breakat` model: after the
+        F12-induced RES, beebjit returns silently from `c` at irregular
+        boundaries before any breakat target is reached. So this method
+        polls screen RAM for the banner string instead of trusting a
+        single cycle window to bracket the whole boot sequence.
+        """
+
+        deadline = time.monotonic() + timeout
+
+        # SHIFT must be in the matrix at the moment the OS reads
+        # the keyboard during reset. Pressing it before BREAK and
+        # holding it across the post-release boot poll covers that
+        # window without needing to know the precise cycle.
+        if autoboot:
+            self.keyDown(BBC_KEY_SHIFT_LEFT)
+        self.keyDown(BBC_KEY_BREAK)
+
+        # Brief run with F12 asserted so the RES line is held on a
+        # running CPU. The cycle counter does not advance during
+        # the hold (CPU is in RES), but `c` still returns once the
+        # debugger event-loop next yields. 200k is comfortably
+        # above the few cycles a real BBC needs to register RES.
+        self.runCycles(200_000, timeout=5.0)
+
+        self.keyUp(BBC_KEY_BREAK)
+        if autoboot:
+            self.keyUp(BBC_KEY_SHIFT_LEFT)
+
+        # Banner row is row 1 of MODE 7 screen RAM (`&7C28`-..).
+        # Cold-boot fills it with "BBC Computer 32K"; we look for
+        # the "BBC Computer" prefix specifically because the size
+        # suffix differs across model variants.
+        bannerAddr = MODE7_BASE_ADDR + 40
+        bannerLen = len(b"BBC Computer")
+
+        while time.monotonic() < deadline:
+            row = self.readMemory(bannerAddr, bannerLen)
+            if row == b"BBC Computer":
+                return
+            self.runCycles(500_000, timeout=5.0)
+
+        raise BeebjitError(
+            "reset: boot banner did not reappear within "
+            f"{timeout:.1f}s"
+        )
 
     # -----------------------------------------------------------------
     # Keyboard input

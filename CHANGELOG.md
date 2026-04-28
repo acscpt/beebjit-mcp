@@ -52,6 +52,8 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - **`read_mode7_text` controls parameter**: optional `controls` selects how non-printable bytes render. `"space"` (default) and `"question"` keep rows at 40 chars wide; `"escape"` emits `\xNN` per non-printable byte for callers needing the original byte value preserved in the decoded string.  Mode7Controls enum added.
 
+- **`reset` MCP tool**: hard-reset the BBC without destroying the session, equivalent to a user pressing BREAK on the real keyboard. The 6502 cycle counter wraps, BASIC state is cleared, and the boot banner reappears, the MCP session id stays valid. `autoboot=true` holds SHIFT across the BREAK so an inserted disc's `!BOOT` runs (the BBC SHIFT+BREAK convention). Driven by injecting an F12 keypress at the matrix and polling MODE 7 screen RAM until the banner is back, since beebjit's debugger returns from `c` at irregular boundaries during the post-RESET execution path.
+
 - **Tests**: pytest suite covering driver-level primitives, MODE 7 decode, keyboard matrix, screenshot capture, and end-to-end HELLO round trip over both driver and MCP.
 
 - **Documentation**: `docs/` directory with architecture, tool reference, session lifecycle, debugger protocol, emulator modes, keypress timing, MODE 7 decode, troubleshooting, development, licensing. README covers install and quickstart.
@@ -62,7 +64,7 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - Upstream beebjit is not supported; the server requires the fork's `-log-stderr` flag. See [binary discovery](docs/binary-discovery.md).
 
-- `reset` and `load_disc` (post-boot) are not implemented.
+- `load_disc` (post-boot) is not implemented.
 
 - `type_input` runs ~10M BBC cycles per character (HOLD=5M + GAP=5M). At `-fast` that is a few ms per character on a modern host; long scripted input (~1000 chars) takes low-single-digit seconds of host time.
 
