@@ -149,21 +149,34 @@ def create_machine(model: str = "b", disc: str | None = None) -> dict[str, str]:
 
     `model` selects the BBC variant (currently only `b` is wired;
     Master B support is planned). `disc` is an optional path to a
-    disc image to insert in drive 0 with SHIFT-BREAK autoboot.
+    disc image, mounted into drive 0 at runtime and SHIFT+BREAK
+    autobooted. The disc is mounted read-only; for writeable or
+    host-mutating mounts call `load_disc` directly.
     """
 
     # Resolve the binary first so the user sees a useful error at
     # session start, not later when a tool fails mid-run.
     binary = _discoverBinary()
 
-    # Disc paths are accepted as strings over JSON-RPC for ergonomic
-    # callers; convert to Path at this boundary.
-    discPath = Path(disc) if disc else None
+    # Validate the disc path Python-side before spawning, so a typo
+    # fails fast with a clean error rather than after subprocess setup.
+    discPath: Path | None = None
+    if disc:
+        discPath = Path(disc)
+        if not discPath.is_file():
+            raise FileNotFoundError(f"disc image not found: {disc}")
 
     # Spawn and wait for the first debugger prompt. Blocks until
     # beebjit is ready (or raises on failure to start).
-    driver = BeebjitDriver(binary, discPath=discPath, model=model)
+    driver = BeebjitDriver(binary, model=model)
     driver.start()
+
+    # Runtime disc mount + SHIFT+BREAK autoboot. Argv-time
+    # `-autoboot` was sticky across runtime resets, so all disc
+    # handling happens after the cold boot via the debugger.
+    if discPath is not None:
+        driver.loadDisc(0, discPath)
+        driver.reset(autoboot=True)
 
     # UUID4 session id: opaque to callers, collision-free for all
     # realistic session counts.
@@ -171,6 +184,85 @@ def create_machine(model: str = "b", disc: str | None = None) -> dict[str, str]:
     _sessions[sessionId] = driver
 
     return {"session_id": sessionId}
+
+
+@mcp.tool()
+def load_disc(
+    session_id: str,
+    disc: str,
+    drive: int = 0,
+    writeable: bool = False,
+    mutable: bool = False,
+) -> dict[str, object]:
+    """Mount a disc image into the named drive at runtime.
+
+    Drives are 0 or 1 (the BBC has two physical drives in its
+    matrix; beebjit exposes both). `writeable` cuts the write-protect
+    notch so the BBC can write to the in-memory image; `mutable`
+    flushes those writes back to the host file. `mutable` requires
+    `writeable`. Both default false: the disc is read-only and the
+    host file is never modified.
+
+    The mount does not trigger a reset or autoboot: the BBC keeps
+    its current state and the new disc is available for the next OS
+    read. Use `boot_disc` for the mount + SHIFT+BREAK autoboot
+    one-shot, or compose `load_disc` with `reset(autoboot=True)`.
+    """
+
+    drv = _getDriver(session_id)
+
+    # Python-side existence check so the caller sees a clean
+    # FileNotFoundError before the debugger gets the command. The
+    # fork would also catch this (`loaddisc: failed`) but its message
+    # is generic; ours points at the missing path.
+    discPath = Path(disc)
+    if not discPath.is_file():
+        raise FileNotFoundError(f"disc image not found: {disc}")
+
+    drv.loadDisc(drive, discPath, writeable=writeable, mutable=mutable)
+
+    return {
+        "ok": True,
+        "drive": drive,
+        "disc": str(discPath),
+        "writeable": writeable,
+        "mutable": mutable,
+    }
+
+
+@mcp.tool()
+def boot_disc(
+    session_id: str,
+    disc: str,
+    drive: int = 0,
+    writeable: bool = False,
+    mutable: bool = False,
+) -> dict[str, object]:
+    """Mount a disc and immediately SHIFT+BREAK autoboot it.
+
+    Equivalent to `load_disc` followed by `reset(autoboot=True)`,
+    bundled so the common "load and run" workflow is a single tool
+    call. Same parameters as `load_disc`. Blocks until the boot
+    banner reappears in MODE 7 screen RAM, so the call returns with
+    the disc's `!BOOT` already running (or already finished).
+    """
+
+    drv = _getDriver(session_id)
+
+    discPath = Path(disc)
+    if not discPath.is_file():
+        raise FileNotFoundError(f"disc image not found: {disc}")
+
+    drv.loadDisc(drive, discPath, writeable=writeable, mutable=mutable)
+    drv.reset(autoboot=True)
+
+    return {
+        "ok": True,
+        "drive": drive,
+        "disc": str(discPath),
+        "writeable": writeable,
+        "mutable": mutable,
+    }
 
 
 @mcp.tool()

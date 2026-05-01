@@ -15,6 +15,8 @@ The project is pre-alpha. Tool names, parameter lists, and return shapes can cha
 | [`create_machine`](#create_machine) | Lifecycle | Boot a fresh BBC Micro session |
 | [`destroy_machine`](#destroy_machine) | Lifecycle | Tear a session down and release the subprocess |
 | [`reset`](#reset) | Lifecycle | Hard-reset the BBC without destroying the session |
+| [`load_disc`](#load_disc) | Lifecycle | Mount a disc image into a drive at runtime |
+| [`boot_disc`](#boot_disc) | Lifecycle | Mount a disc and SHIFT+BREAK autoboot it |
 | [`run_for_cycles`](#run_for_cycles) | Execution | Advance the emulator by exactly N BBC cycles |
 | [`run_until_text`](#run_until_text) | Execution | Run until a substring appears in the MODE 7 screen |
 | [`run_until_prompt`](#run_until_prompt) | Execution | Run until a prompt character at the start of a row |
@@ -55,7 +57,7 @@ Boot a fresh BBC Micro session.
 
 - `model` *(string, default `"b"`)*: BBC model. Only `"b"` (BBC B) is supported.
 
-- `disc` *(string | null, default `null`)*: Absolute path to an SSD or DSD disc image. When set, beebjit launches with `-0 <path> -autoboot` so the disc runs its `!BOOT` file on power-on.
+- `disc` *(string | null, default `null`)*: Absolute path to an SSD or DSD disc image. When set, the BBC cold-boots, the disc is mounted into drive 0 read-only via the debugger, then SHIFT+BREAK runs the disc's `!BOOT` file. For a writeable mount or for non-default drive selection, omit this parameter and call [`load_disc`](#load_disc) directly after `create_machine`.
 
 **Returns**
 
@@ -143,7 +145,100 @@ Hard-reset the running BBC without tearing down the session. Equivalent to a use
 
 The reset blocks until the boot banner is back in MODE 7 screen RAM, so the call returns with the BBC at a fresh BASIC prompt (or whatever the autoboot disc landed on). If the banner does not reappear within thirty seconds, the call raises rather than returning silently.
 
-`autoboot=true` only matters if a disc was inserted at `create_machine` time. Without a disc, the SHIFT held during BREAK is harmless and the OS comes up at the BASIC prompt as usual.
+`autoboot=true` only matters when a disc is mounted in drive 0 (either at `create_machine` time or via [`load_disc`](#load_disc)). Without a disc, the SHIFT held during BREAK is harmless and the OS comes up at the BASIC prompt as usual.
+
+[^ Index](#index)
+
+### `load_disc`
+
+Mount a disc image into a drive at runtime. The BBC keeps its current state; the new disc becomes available for the next OS read.
+
+**Parameters**
+
+- `disc` *(string)*: Absolute path to an SSD or DSD disc image. The MCP layer checks the path exists before sending the command.
+
+- `drive` *(integer, default `0`)*: BBC disc drive to mount into. Either `0` or `1`.
+
+- `writeable` *(boolean, default `false`)*: Cut the write-protect notch so the BBC can write to the in-memory image. Default keeps the disc read-only.
+
+- `mutable` *(boolean, default `false`)*: Flush in-memory writes back to the host file. Requires `writeable=true`. Default leaves the host file untouched.
+
+**Returns**
+
+- `ok` *(boolean)*: `true` on success.
+- `drive` *(integer)*: Drive the disc was mounted into.
+- `disc` *(string)*: Absolute path of the mounted disc image.
+- `writeable`, `mutable` *(boolean)*: Echo of the requested flags.
+
+**Errors**
+
+- `FileNotFoundError` if `disc` is not a readable file. Surfaced as an MCP tool-call error.
+
+- `BeebjitError` if beebjit's own pre-checks reject the mount (extension, slot count, file readability). The error message includes beebjit's own `loaddisc: failed (see log) for ...` line.
+
+- `BeebjitError` if the running beebjit binary predates the `loaddisc` debugger command. See [binary discovery](binary-discovery.md) for the minimum fork version.
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "disc": "/path/to/game.ssd"}
+
+// Response
+{
+  "ok": true,
+  "drive": 0,
+  "disc": "/path/to/game.ssd",
+  "writeable": false,
+  "mutable": false
+}
+```
+
+**Notes**
+
+The mount does not trigger a reset or autoboot. The BBC keeps its current state and the new disc is just available for the next OS read. For mount + autoboot in one call, use [`boot_disc`](#boot_disc); for mount with explicit reset, compose `load_disc` with [`reset`](#reset)`(autoboot=true)`.
+
+`writeable` controls whether the BBC can modify the in-memory image; `mutable` controls whether those modifications persist back to the host file. The two flags compose: `writeable=true, mutable=false` is "writes survive in this session only, never reach disk", which is useful for save-game probes that should not perturb the source file.
+
+[^ Index](#index)
+
+### `boot_disc`
+
+Mount a disc and SHIFT+BREAK autoboot it in one call.
+
+**Parameters**
+
+Same shape as [`load_disc`](#load_disc): `disc`, `drive` (default `0`), `writeable` (default `false`), `mutable` (default `false`).
+
+**Returns**
+
+Same shape as [`load_disc`](#load_disc): `ok`, `drive`, `disc`, `writeable`, `mutable`.
+
+**Errors**
+
+- Same Python-side and beebjit-side errors as [`load_disc`](#load_disc).
+
+- `BeebjitError` if the post-reset boot banner does not reappear within thirty seconds. Same timeout as [`reset`](#reset).
+
+**Example**
+
+```json
+// Request
+{"session_id": "<uuid>", "disc": "/path/to/game.ssd"}
+
+// Response
+{
+  "ok": true,
+  "drive": 0,
+  "disc": "/path/to/game.ssd",
+  "writeable": false,
+  "mutable": false
+}
+```
+
+**Notes**
+
+Equivalent to [`load_disc`](#load_disc) followed by [`reset`](#reset)`(autoboot=true)`. Blocks until the boot banner is back in MODE 7 screen RAM, so the call returns with the disc's `!BOOT` already running (or already finished).
 
 [^ Index](#index)
 
@@ -161,7 +256,7 @@ Advance the emulator by exactly N BBC cycles.
 
 - `ok` *(boolean)*: `true` on success.
 - `cycles_ran` *(integer)*: Number of cycles requested.
-- `cycles_total` *(integer)*: Cumulative cycle count after the run, anchored from beebjit's live cycle register.
+- `cycles_total` *(integer)*: Post-run value of beebjit's 6502-relative cycle counter (`cycles=` from `r`). Rebases near zero on every BBC Break, so this is "BBC time since last reset" rather than wallclock-since-spawn.
 
 **Errors**
 
@@ -179,9 +274,9 @@ Advance the emulator by exactly N BBC cycles.
 
 **Notes**
 
-Cycle counting is anchored on a live register read each call. The driver reads the current cycle count, computes `target = current + cycles`, sets `breakat target`, and issues `c`. Chained calls do not accumulate drift.
+Cycle counting is anchored against beebjit's global `total_timer_ticks` counter (read live via `eval ticks` on each call). The driver reads ticks, computes `target = ticks + cycles`, sets `breakat target`, and issues `c`. Anchoring against ticks rather than the 6502-relative `cycles=` field is what makes the call survive a soft reset, since `cycles=` rebases on Break while ticks are monotonic. Chained calls do not accumulate drift.
 
-beebjit can overshoot the breakpoint by a handful of instructions. `cycles_total` reports the exact stopping point.
+beebjit can overshoot the breakpoint by a handful of instructions. `cycles_total` reports the exact 6502-relative stopping point and may differ from the requested target by a few cycles.
 
 [^ Index](#index)
 

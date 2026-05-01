@@ -123,6 +123,50 @@ def testDriverResetAutobootCompletesOnNoDiscSession(
         assert cyclesAfter < cyclesBefore, (cyclesBefore, cyclesAfter)
 
 
+def testDriverLoadDiscMountsEmptySsd(
+    beebjitBinary: Path, tmp_path: Path
+) -> None:
+    # An empty file with a .ssd extension is enough for the fork's
+    # pre-checks to accept the mount; we are exercising the command
+    # plumbing, not the BBC's reaction to the disc contents.
+    discPath = tmp_path / "blank.ssd"
+    discPath.touch()
+    with BeebjitDriver(beebjitBinary) as drv:
+        drv.loadDisc(0, discPath)
+
+
+def testDriverLoadDiscRaisesOnMissingFile(
+    beebjitBinary: Path, tmp_path: Path
+) -> None:
+    # The driver does not pre-check existence (that lives in the
+    # MCP layer). Pointing loaddisc at a non-existent path therefore
+    # exercises the fork's own `loaddisc: failed` line.
+    missing = tmp_path / "no-such.ssd"
+    with BeebjitDriver(beebjitBinary) as drv:
+        with pytest.raises(BeebjitError, match="loaddisc: failed"):
+            drv.loadDisc(0, missing)
+
+
+def testDriverLoadDiscRejectsBadDrive(beebjitBinary: Path) -> None:
+    # Drive numbers outside {0, 1} are rejected Python-side before
+    # the command ever leaves the process; the assertion must hold
+    # without a real beebjit, but using the live driver keeps the
+    # test honest about how callers actually use the API.
+    with BeebjitDriver(beebjitBinary) as drv:
+        with pytest.raises(ValueError, match="drive must be 0 or 1"):
+            drv.loadDisc(5, "/dev/null")
+
+
+def testDriverLoadDiscRequiresWriteableForMutable(
+    beebjitBinary: Path,
+) -> None:
+    # The fork rejects `m` without `w`, but mirroring the check
+    # Python-side gives a useful traceback before the round trip.
+    with BeebjitDriver(beebjitBinary) as drv:
+        with pytest.raises(ValueError, match="mutable=True requires"):
+            drv.loadDisc(0, "/dev/null", mutable=True)
+
+
 def testDriverResetWrapsCycleCounter(beebjitBinary: Path) -> None:
     # The 6502 cycle counter wraps near zero on a real RESET. Drive
     # the BBC well past the initial boot so the pre-reset cycle

@@ -34,8 +34,11 @@ Threading model:
 Cycle model:
 
 * `runCycles(n)` uses `breakat <target>; c` to advance exactly
-  `n` BBC cycles. Anchored to the current `cycles` register so
-  repeated calls remain accurate without drift.
+  `n` BBC cycles. Anchored to beebjit's global `total_timer_ticks`
+  counter (read via `eval ticks`) so repeated calls remain accurate
+  without drift and survive a soft reset; the 6502-relative `cycles=`
+  field from `r` rebases near zero on Break and would land breakat
+  targets in the past, which beebjit silently drops.
 * Keypress timings are in BBC cycles; see
   `untracked/keypress-debug.md` for why the HOLD/GAP defaults
   are 5M / 5M cycles.
@@ -83,6 +86,16 @@ _REG_RE: re.Pattern[bytes] = re.compile(
     rb"6502 \[A=([0-9A-F]{2}) X=([0-9A-F]{2}) Y=([0-9A-F]{2}) S=([0-9A-F]{2}) "
     rb"F=(.{8}) PC=([0-9A-F]{4}) cycles=(\d+)\]"
 )
+
+
+# `eval <expr>` (expression engine) output line:
+#   result: 1000001 (0xf4241)
+# We only consume the decimal value; the hex parenthetical is for the
+# human reader. Used by `_readTicks` to anchor cycle-based breakpoints
+# against the global `total_timer_ticks` counter, which (unlike `r`'s
+# `cycles=` field) is monotonic across BBC Break and matches the unit
+# `breakat` itself operates in.
+_EVAL_RE: re.Pattern[bytes] = re.compile(rb"result:\s+(\d+)\s+\(0x[0-9a-fA-F]+\)")
 
 
 # `m <addr>` (memory dump) output line:
@@ -136,6 +149,31 @@ _BGRA_BYTES_PER_PIXEL: int = 4
 _TEMP_DIR_PREFIX: str = "beebjit_session_"
 
 
+# `loaddisc <d> <f>` success line:
+#   loaddisc: drive 0 loaded with /path/to/disc.ssd
+_LOADDISC_OK_RE: re.Pattern[bytes] = re.compile(
+    rb"^loaddisc: drive (\d+) loaded with "
+)
+
+
+# `loaddisc` failure line emitted when the fork's own pre-checks
+# reject the request (extension, slot count, file readability).
+_LOADDISC_FAIL_PREFIX: str = "loaddisc: failed"
+
+
+# `loaddisc` argument-validation line emitted when `m` is passed
+# without `w`. Surfaced as a Python ValueError before we send the
+# command, but kept as a parser anchor in case the binary's own
+# validation drifts.
+_LOADDISC_FLAG_ERR_PREFIX: str = "loaddisc:"
+
+
+# Old-binary marker. beebjit emits `???` on any unrecognised command,
+# so a `???` after `loaddisc` means the binary predates the fork's
+# disc-mount debugger command.
+_UNRECOGNISED_COMMAND: str = "???"
+
+
 # -----------------------------------------------------------------------
 # Exceptions
 # -----------------------------------------------------------------------
@@ -180,7 +218,6 @@ class BeebjitDriver:
     def __init__(
         self,
         binaryPath: Path,
-        discPath: Path | None = None,
         model: str = "b",
         cycles: int = 10**12,
     ) -> None:
@@ -190,15 +227,17 @@ class BeebjitDriver:
         default is effectively unbounded for short-lived sessions
         but still guards against runaway CPU time if the client
         forgets to destroy the session.
+
+        Discs are mounted at runtime via `loadDisc`, not at start
+        time. The argv-time `-autoboot` flag was sticky across runtime
+        resets, so all disc handling moved behind the debugger's
+        `loaddisc` command after the fork added it.
         """
 
         # Paths and session config are immutable for the lifetime of
-        # this driver; changing model or disc mid-session would need
-        # a restart and is not supported.
+        # this driver; changing the model or cycles cap mid-session
+        # would need a restart and is not supported.
         self._binaryPath: Path = Path(binaryPath)
-        self._discPath: Path | None = (
-            Path(discPath) if discPath is not None else None
-        )
         self._model: str = model
         self._cycles: int = cycles
 
@@ -261,13 +300,6 @@ class BeebjitDriver:
             "-cycles",
             str(self._cycles),
         ]
-
-        # Disc mode: add `-0 <path>` and `-autoboot` so SHIFT+BREAK
-        # equivalent boot runs automatically. Only set when the
-        # caller supplied a disc; the no-disc path leaves the Beeb
-        # at the BASIC prompt after ROM boot.
-        if self._discPath is not None:
-            argv.extend(["-0", str(self._discPath), "-autoboot"])
 
         # Per-session scratch dir for files exchanged with beebjit
         # via the debugger (currently `savescreen`). Created before
@@ -542,6 +574,29 @@ class BeebjitDriver:
 
         raise BeebjitError(f"could not parse registers from: {lines!r}")
 
+    def _readTicks(self) -> int:
+        """Read `total_timer_ticks`, the counter `breakat` operates in.
+
+        beebjit exposes two cycle counters: a 6502-relative one printed
+        by `r` as `cycles=`, and a global monotonic one available as
+        `ticks` in the expression engine. The two agree pre-Break (within
+        eight ticks) and diverge post-Break, when the 6502-relative
+        counter rebases near zero while ticks keep climbing. `breakat`
+        matches against ticks, so cycle-anchored callers must use this
+        rather than `readRegisters()['cycles']`; the latter computes
+        targets that land in the past after a soft reset, which beebjit
+        silently drops.
+        """
+
+        lines = self.sendCommand("eval ticks")
+        for line in lines:
+            match = _EVAL_RE.search(line.encode())
+            if match is not None:
+                return int(match.group(1))
+        raise BeebjitError(
+            f"could not parse `eval ticks` output: {lines!r}"
+        )
+
     def readMemory(self, addr: int, length: int) -> bytes:
         """Peek `length` bytes starting at 16-bit address `addr`.
 
@@ -803,11 +858,19 @@ class BeebjitDriver:
     def runCycles(self, n: int, timeout: float = 30.0) -> None:
         """Advance the emulator by exactly `n` BBC cycles.
 
-        Uses a cycle-anchored `breakat`: we read the current cycles
-        register, set a breakpoint at `current + n`, and `c`ontinue.
-        This keeps repeated calls accurate without drift, which
-        matters for keypress-timing helpers that chain several
-        short runs together.
+        Uses a tick-anchored `breakat`: we read the current value of
+        beebjit's global `total_timer_ticks` counter, set a breakpoint
+        at `current + n`, and `c`ontinue. This keeps repeated calls
+        accurate without drift, which matters for keypress-timing
+        helpers that chain several short runs together.
+
+        Anchoring against ticks rather than the 6502-relative `cycles=`
+        field from `r` is what makes this work across a soft reset.
+        The two counters agree pre-Break, but `cycles=` rebases near
+        zero on Break while ticks keep climbing; computing
+        `breakat <cycles + n>` post-Break lands in the past relative to
+        ticks, which beebjit silently drops, leaving `c` with no break
+        condition and running indefinitely.
 
         The default `timeout` covers a one-second BBC-time run at
         reasonable host speed; callers who schedule very long runs
@@ -817,15 +880,91 @@ class BeebjitDriver:
         if n <= 0:
             return
 
-        # Anchor to current cycles rather than tracking a local
-        # counter: beebjit is the source of truth and may advance
-        # a few extra cycles between our `breakat` and its own
-        # breakpoint check. Reading live avoids accumulated drift.
-        regs = self.readRegisters()
-        target = int(regs["cycles"]) + n
+        target = self._readTicks() + n
 
         self.sendCommand(f"breakat {target}")
         self.sendCommand("c", timeout=timeout)
+
+    def loadDisc(
+        self,
+        drive: int,
+        path: Path | str,
+        writeable: bool = False,
+        mutable: bool = False,
+    ) -> None:
+        """Mount disc image `path` into drive `drive` at runtime.
+
+        `writeable` cuts the write-protect notch so the BBC can write
+        to the in-memory image. `mutable` flushes those writes back
+        to the host file. `mutable` requires `writeable`; the BBC
+        side enforces this and we mirror the check Python-side so
+        the caller sees a Python ValueError before any debugger
+        round trip.
+
+        Both default False, leaving the disc read-only and the host
+        file unchanged. The fork's own `loaddisc` pre-checks the
+        drive number, file extension, file readability, and slot
+        count, so a typo surfaces as a `loaddisc: failed` line and
+        is raised as `BeebjitError` rather than wedging the emulator.
+
+        Raises `BeebjitError` if beebjit does not recognise the
+        command (binary too old) or if the fork-side pre-check
+        rejects the request.
+        """
+
+        # Mirror the fork's own validation. Catching this Python-side
+        # gives a useful traceback instead of a debugger-side string.
+        if mutable and not writeable:
+            raise ValueError("mutable=True requires writeable=True")
+
+        # Drive number is part of the command grammar; reject obvious
+        # caller errors before going to the debugger. The fork accepts
+        # 0 or 1; anything else is `???`-rejected.
+        if drive not in (0, 1):
+            raise ValueError(f"drive must be 0 or 1, got {drive}")
+
+        # Compose the optional `w`/`m` suffix. The order matters to
+        # the parser on the fork side: `w` then `m`.
+        flagBits: list[str] = []
+        if writeable:
+            flagBits.append("w")
+        if mutable:
+            flagBits.append("m")
+        flagSuffix = (" " + " ".join(flagBits)) if flagBits else ""
+
+        cmd = f"loaddisc {drive} {path}{flagSuffix}"
+        lines = self.sendCommand(cmd)
+
+        # Three failure shapes from the fork: `???` for an
+        # unrecognised command (old binary), `loaddisc: failed` for
+        # a pre-check rejection, and any other `loaddisc:` prefix
+        # for argument-validation messages such as `'m' requires 'w'`.
+        for line in lines:
+            stripped = line.strip()
+
+            if stripped == _UNRECOGNISED_COMMAND:
+                raise BeebjitError(
+                    "loaddisc not recognised by beebjit; binary too "
+                    "old. Need a fork build that ships the loaddisc "
+                    "debugger command."
+                )
+
+            if stripped.startswith(_LOADDISC_FAIL_PREFIX):
+                raise BeebjitError(stripped)
+
+            match = _LOADDISC_OK_RE.match(line.encode())
+            if match is not None:
+                return
+
+            # Catch-all for any other `loaddisc:` line that is not
+            # the success regex. The fork uses this prefix for its
+            # own argument-validation diagnostics.
+            if stripped.startswith(_LOADDISC_FLAG_ERR_PREFIX):
+                raise BeebjitError(stripped)
+
+        raise BeebjitError(
+            f"could not parse loaddisc output: {lines!r}"
+        )
 
     def reset(
         self,
@@ -834,56 +973,86 @@ class BeebjitDriver:
     ) -> None:
         """Hard-reset the BBC by tapping F12 (the BREAK key).
 
-        With `autoboot=True`, holds left-SHIFT across the BREAK so
-        the OS runs the inserted disc's `!BOOT`. Blocks until the
-        boot banner reappears in screen RAM or `timeout` expires.
+        With `autoboot=True`, holds left-SHIFT across BREAK and through
+        MOS's keyboard-matrix scan window so the OS picks up SHIFT+BREAK
+        and runs the inserted disc's `!BOOT`.
 
-        Recon showed that the post-RESET execution flow does not fit
-        `runCycles`'s cycle-anchored `breakat` model: after the
-        F12-induced RES, beebjit returns silently from `c` at irregular
-        boundaries before any breakat target is reached. So this method
-        polls screen RAM for the banner string instead of trusting a
-        single cycle window to bracket the whole boot sequence.
+        The settle signal is a memory-write breakpoint on the banner
+        row at `&7C28`. The row is wiped before pressing F12 so the
+        breakpoint can only fire on a fresh post-reset write, not on
+        the stale contents from before this call (RES does not clear
+        RAM; only MOS init does). The breakpoint fires the moment MOS
+        prints the banner during boot, which is past the early init
+        and the keyboard-matrix scan, so SHIFT held until that point
+        covers the autoboot dispatch.
         """
 
-        deadline = time.monotonic() + timeout
-
-        # SHIFT must be in the matrix at the moment the OS reads
-        # the keyboard during reset. Pressing it before BREAK and
-        # holding it across the post-release boot poll covers that
-        # window without needing to know the precise cycle.
-        if autoboot:
-            self.keyDown(BBC_KEY_SHIFT_LEFT)
-        self.keyDown(BBC_KEY_BREAK)
-
-        # Brief run with F12 asserted so the RES line is held on a
-        # running CPU. The cycle counter does not advance during
-        # the hold (CPU is in RES), but `c` still returns once the
-        # debugger event-loop next yields. 200k is comfortably
-        # above the few cycles a real BBC needs to register RES.
-        self.runCycles(200_000, timeout=5.0)
-
-        self.keyUp(BBC_KEY_BREAK)
-        if autoboot:
-            self.keyUp(BBC_KEY_SHIFT_LEFT)
-
         # Banner row is row 1 of MODE 7 screen RAM (`&7C28`-..).
-        # Cold-boot fills it with "BBC Computer 32K"; we look for
-        # the "BBC Computer" prefix specifically because the size
-        # suffix differs across model variants.
+        # Cold-boot fills it with "BBC Computer 32K"; we watch the
+        # "BBC Computer" prefix specifically because the size suffix
+        # differs across model variants.
         bannerAddr = MODE7_BASE_ADDR + 40
         bannerLen = len(b"BBC Computer")
+        bannerEnd = bannerAddr + bannerLen
 
-        while time.monotonic() < deadline:
-            row = self.readMemory(bannerAddr, bannerLen)
-            if row == b"BBC Computer":
-                return
-            self.runCycles(500_000, timeout=5.0)
+        # Wipe the stale banner so the breakpoint fires only on the
+        # fresh write that MOS does during reset.
+        self.writeMemory(bannerAddr, bytes(bannerLen))
 
-        raise BeebjitError(
-            "reset: boot banner did not reappear within "
-            f"{timeout:.1f}s"
+        # Arm a conditional memory-write watch over the banner range,
+        # firing only when the accumulator holds a printable character
+        # (greater than ASCII space). MOS does two screen-init passes
+        # before the real banner: zeros via `STA` with A=0, then spaces
+        # via `STA` with A=0x20. Filtering on `a > 32` skips both
+        # passes and fires on the first character of "BBC Computer".
+        # The expression engine evaluates `mem` as the pre-write value,
+        # which is always zero here because of our pre-clear above, so
+        # `mem != 0` would never match either pass.
+        self.sendCommand(
+            f"bmw {bannerAddr:x} {bannerEnd:x} expr 'a > 32'"
         )
+
+        try:
+            if autoboot:
+                self.keyDown(BBC_KEY_SHIFT_LEFT)
+            self.keyDown(BBC_KEY_BREAK)
+
+            # Brief run with F12 asserted so the RES line is held on
+            # a running CPU. 200k is comfortably above the few cycles
+            # a real BBC needs to register RES; the CPU is in RES for
+            # this whole window so no memory writes happen, and the
+            # banner watch cannot fire here.
+            self.runCycles(200_000, timeout=5.0)
+
+            self.keyUp(BBC_KEY_BREAK)
+
+            # Wait for the first non-space write to the banner range.
+            # The watch is the only stop condition, so `c` returns at
+            # MOS's first character of "BBC Computer".
+            self.sendCommand("c", timeout=timeout)
+
+            if autoboot:
+                # Hold SHIFT through MOS's autoboot dispatch window,
+                # which can land after the banner-print start. Banner
+                # print fires the watch at ~700k post-Break; the
+                # SHIFT+BREAK detection and dispatch can run for up
+                # to ~1.5M cycles after that, depending on the OS
+                # version.
+                self.runCycles(1_500_000, timeout=10.0)
+                self.keyUp(BBC_KEY_SHIFT_LEFT)
+        finally:
+            # Delete the watch even if `c` timed out, so the next
+            # `runCycles` is not derailed by an unrelated banner
+            # write firing this leftover breakpoint.
+            self.sendCommand("db 0")
+
+        # Let MOS finish settling and let an autobooted `!BOOT` start
+        # running. Without this, only the first character of "BBC
+        # Computer" is in screen RAM when `reset()` returns. 1M
+        # cycles past the banner-print start lands at a stable boot
+        # screen for non-autoboot resets, and inside `!BOOT`
+        # execution for autoboot resets.
+        self.runCycles(1_000_000, timeout=5.0)
 
     # -----------------------------------------------------------------
     # Keyboard input

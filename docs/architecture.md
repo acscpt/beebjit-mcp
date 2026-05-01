@@ -218,12 +218,11 @@ Behaviours that affect every tool, not just one of them. Documented here once ra
 
 ### Implementation specifics
 
-Two implementation choices worth flagging: the driver's concurrency model, and the live-cycle-read pattern used by `runCycles`.
-
 - **Cycle-anchored runs.**
-  - `runCycles(n)` reads beebjit's live cycle counter, computes an absolute target, arms a one-shot cycle breakpoint, and resumes execution.
+  - `runCycles(n)` reads beebjit's global `total_timer_ticks` counter via `eval ticks`, computes an absolute target, arms a one-shot cycle breakpoint, and resumes execution.
   - Reading the live counter on every call avoids the drift that a server-maintained counter would accumulate from beebjit's small overshoots at each breakpoint.
   - The drift would eventually shrink `tapKey`'s HOLD window below the threshold the BBC MOS needs to recognise a key, and keypresses would be silently dropped.
+  - Anchoring against ticks rather than the 6502-relative `cycles=` value from `r` is what makes `runCycles` survive a soft reset. The two counters agree pre-Break (within eight units), but `cycles=` rebases near zero on every Break while ticks keep climbing. A target computed as `cycles + n` after a Break lands in the past relative to ticks, which beebjit silently drops as a no-op, leaving `c` with no break condition and running indefinitely.
   - See [keypress-timing.md](keypress-timing.md) for the thresholds and the probe data behind them.
 
 - **Driver concurrency.**
