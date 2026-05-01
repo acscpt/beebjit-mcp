@@ -39,9 +39,9 @@ sequenceDiagram
     S-->>C: {"session_id": uuid}
 ```
 
-The server blocks until the first `(6502db)` prompt arrives. Typical host time is under 100 ms with the fork's JIT. A 10-second internal timeout trips only on a genuinely stuck beebjit.
+The server blocks until the first `(6502db)` prompt arrives. Typical host time is under 100 ms. A 10-second internal timeout trips only on a genuinely stuck beebjit.
 
-If `disc` is passed to `create_machine`, beebjit is spawned with `-0 <path> -autoboot`. The BBC starts running the disc's `!BOOT` file as soon as cycle zero is released, and the first prompt returns once beebjit has finished its own banner output. The client typically follows up with `run_for_cycles` to let the BBC reach a settled state before further interaction.
+If `disc` is passed to `create_machine`, the server holds SHIFT in the keyboard matrix from cycle zero, mounts the disc image into drive 0, and lets MOS init read SHIFT during its boot keyboard scan. This is the same gesture as a real user holding SHIFT before powering on with a disc inserted. The disc's `!BOOT` runs and `create_machine` returns once a 20M-cycle settle window has elapsed.
 
 Initialisation stops at the first prompt. Anything past the spawn is the caller's responsibility.
 
@@ -129,26 +129,24 @@ sequenceDiagram
     end
     D->>B: keydown 152 (F12 = BREAK)
     D->>B: breakat X; c
-    Note over B: CPU held in RES,<br/>cycle counter frozen
+    Note over B: F12 hold,<br/>RES asserted
     B-->>D: prompt
     D->>B: keyup 152
+    D->>B: breakat Y; c
+    Note over B: MOS init runs;<br/>boot keyboard scan<br/>reads SHIFT (if held)
+    B-->>D: prompt
     opt autoboot
         D->>B: keyup 133
-    end
-    loop until banner reappears
-        D->>B: read MODE 7 row 1
-        D->>B: breakat Y; c
-        Note over B: OS reset code runs
     end
     D-->>S: done
     S-->>C: {"ok": true}
 ```
 
-The mechanism is keypress synthesis. F12 is what beebjit accepts for the BBC BREAK key, so injecting `keydown 152` and running briefly with it asserted puts the 6502 into RES. Releasing it lets the OS reset path run, and the driver polls screen RAM until "BBC Computer" reappears.
+The mechanism is keypress synthesis. F12 is what beebjit accepts for the BBC BREAK key, so injecting `keydown 152` and running briefly with it asserted puts the 6502 into RES. Releasing it lets the OS reset path run, and a generous open-loop cycle window covers MOS init's settle on every supported model.
 
-`autoboot=true` brackets the BREAK with SHIFT, matching the BBC SHIFT+BREAK convention that runs an inserted disc's `!BOOT`. SHIFT held during reset is harmless on a session created without a disc, the OS comes up at the BASIC prompt regardless.
+`autoboot=true` brackets the BREAK with SHIFT, matching the BBC SHIFT+BREAK convention that runs an inserted disc's `!BOOT`. SHIFT is held through the post-BREAK cycle window so MOS reads it during the boot keyboard scan. SHIFT held during reset is harmless on a session created without a disc, the OS comes up at the BASIC prompt regardless.
 
-The call blocks until the banner is back. Total wallclock time is on the order of a few hundred milliseconds. If the banner does not reappear within 30 seconds, the call raises rather than returning silently, on the assumption that something is genuinely wrong with either the BBC's reset path or the driver's screen polling.
+Total wallclock time is on the order of a few hundred milliseconds at `-fast`.
 
 After `reset` returns, the session is back in steady state. Any prior tool call's effect on the BBC (typed input, written memory, set breakpoints) is gone, everything outside the BBC (the driver, the subprocess, the session id, the per-session temp directory used by `screenshot`) survives.
 

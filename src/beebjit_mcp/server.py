@@ -147,11 +147,18 @@ def _resolveKey(key: str | int) -> int:
 def create_machine(model: str = "b", disc: str | None = None) -> dict[str, str]:
     """Boot a BBC Micro session. Returns a `session_id` for subsequent tools.
 
-    `model` selects the BBC variant (currently only `b` is wired;
-    Master B support is planned). `disc` is an optional path to a
-    disc image, mounted into drive 0 at runtime and SHIFT+BREAK
-    autobooted. The disc is mounted read-only; for writeable or
-    host-mutating mounts call `load_disc` directly.
+    `model` selects the BBC variant. Accepted values are `b` (BBC B,
+    default), `master` (Master 128 with MOS 3.20), `mos35` (Master 128
+    with MOS 3.50), and `compact` (Master Compact). `disc` is an
+    optional path to a disc image, mounted into drive 0 at runtime and
+    SHIFT+BREAK autobooted. The disc is mounted read-only; for
+    writeable or host-mutating mounts call `load_disc` directly.
+
+    Disc-image format follows from the model: BBC B and the two Master
+    128 variants read DFS images (`.ssd` and `.dsd`); Master Compact
+    reads ADFS images (`.adl` and `.adf`). The fork's `loaddisc`
+    accepts all four extensions; the BBC's filing system on the other
+    side reads what it understands.
     """
 
     # Resolve the binary first so the user sees a useful error at
@@ -171,12 +178,15 @@ def create_machine(model: str = "b", disc: str | None = None) -> dict[str, str]:
     driver = BeebjitDriver(binary, model=model)
     driver.start()
 
-    # Runtime disc mount + SHIFT+BREAK autoboot. Argv-time
-    # `-autoboot` was sticky across runtime resets, so all disc
-    # handling happens after the cold boot via the debugger.
+    # Cold-boot autoboot: SHIFT held from cycle 0 and disc mounted
+    # before MOS init runs. Equivalent to a user holding SHIFT before
+    # powering on with a disc inserted, and the only path that fires
+    # autoboot uniformly across BBC B, Master 128 / MOS 3.20, Master
+    # 128 / MOS 3.50, and Master Compact. A mid-session SHIFT+BREAK
+    # via `reset(autoboot=True)` works on three of those models but
+    # silently misses on MOS 3.50.
     if discPath is not None:
-        driver.loadDisc(0, discPath)
-        driver.reset(autoboot=True)
+        driver.coldBootWithAutoboot(0, discPath)
 
     # UUID4 session id: opaque to callers, collision-free for all
     # realistic session counts.
@@ -238,13 +248,18 @@ def boot_disc(
     writeable: bool = False,
     mutable: bool = False,
 ) -> dict[str, object]:
-    """Mount a disc and immediately SHIFT+BREAK autoboot it.
+    """Mount a disc and SHIFT+BREAK autoboot it in one call.
 
     Equivalent to `load_disc` followed by `reset(autoboot=True)`,
     bundled so the common "load and run" workflow is a single tool
-    call. Same parameters as `load_disc`. Blocks until the boot
-    banner reappears in MODE 7 screen RAM, so the call returns with
-    the disc's `!BOOT` already running (or already finished).
+    call. Same parameters as `load_disc`. The gesture matches a real
+    user holding SHIFT and pressing BREAK on a running BBC after
+    inserting a disc; the running BBC's state is otherwise preserved
+    through the soft reset.
+
+    Blocks until the boot banner reappears in MODE 7 screen RAM, so
+    the call returns with the disc's `!BOOT` already running (or
+    already finished).
     """
 
     drv = _getDriver(session_id)

@@ -1,6 +1,6 @@
 # Debugger protocol
 
-The beebjit debugger is a line-oriented REPL reached by launching beebjit with `-debug`. Every command is one or more words on stdin terminated by a newline. Every response is zero or more lines of output followed by the fixed nine-byte prompt `(6502db) ` (letters, digits, space, no newline). The driver writes commands, reads from the stream, and splits responses on the prompt boundary.
+The beebjit debugger is a line-oriented REPL reached by launching beebjit with `-debug`. Every command is one or more words on stdin terminated by a newline. Every response is zero or more lines of output followed by the fixed nine-byte prompt `(6502db)` plus a trailing space (no newline). The driver writes commands, reads from the stream, and splits responses on the prompt boundary.
 
 This REPL is the only channel between the driver side and beebjit. Register reads, memory dumps, keypress timing, and cycle-bounded runs are all built from the commands in this reference.
 
@@ -50,8 +50,6 @@ Subtleties the driver handles:
 - Commands can be chained with `;` on one line (`breakat 100; c`), but the driver always emits them as separate `sendCommand` calls, one prompt round-trip per command.
 
 ## Per-command reference
-
-All example output comes from the fork's binary.
 
 ### `r`
 

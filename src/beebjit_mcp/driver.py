@@ -53,6 +53,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from enum import Enum
 from pathlib import Path
 from types import TracebackType
 
@@ -189,6 +190,55 @@ class BeebjitError(RuntimeError):
 
 
 # -----------------------------------------------------------------------
+# Beeb model selection
+# -----------------------------------------------------------------------
+
+class BeebModel(str, Enum):
+    """Selector for the BBC hardware configuration beebjit emulates.
+
+    Values are the wire-format strings used by the MCP tool and any
+    JSON consumer; Pydantic accepts those strings and coerces them
+    to enum members before our code sees them. Direct Python callers
+    use the members directly so typos are caught at parse time
+    rather than as a runtime error.
+
+    The `(str, Enum)` base means each member also IS its string
+    value: `BeebModel.B == "b"` is True, and JSON serialisation,
+    logging, and dict round-trips return the string form without
+    needing `.value` extraction.
+
+    Disc-image format follows from the model. BBC B and both Master
+    128 variants read DFS images (`.ssd` / `.dsd`); Master Compact
+    reads ADFS images (`.adl` / `.adf`). The fork's `loaddisc`
+    accepts all four extensions; the OS on the BBC side reads what
+    it understands.
+    """
+
+    # BBC B with MOS 1.20 and the 8271 floppy controller. The default
+    # beebjit configuration; selected by the empty argv branch below.
+    B = "b"
+
+    # Master 128 with MOS 3.20, the original Master OS.
+    MASTER = "master"
+
+    # Master 128 with MOS 3.50, the later revision.
+    MOS35 = "mos35"
+
+    # BBC Master Compact, ADFS-only on a 3.5" floppy.
+    COMPACT = "compact"
+
+
+# Extra beebjit argv tokens spliced into `start()` for each model.
+# An empty tuple means the default beebjit configuration (BBC B).
+_MODEL_ARGV: dict[BeebModel, tuple[str, ...]] = {
+    BeebModel.B: (),
+    BeebModel.MASTER: ("-master",),
+    BeebModel.MOS35: ("-mos35",),
+    BeebModel.COMPACT: ("-compact",),
+}
+
+
+# -----------------------------------------------------------------------
 # Driver
 # -----------------------------------------------------------------------
 
@@ -218,10 +268,15 @@ class BeebjitDriver:
     def __init__(
         self,
         binaryPath: Path,
-        model: str = "b",
+        model: str | BeebModel = BeebModel.B,
         cycles: int = 10**12,
     ) -> None:
         """Configure a driver; does not spawn the subprocess until `start()`.
+
+        `model` selects the BBC hardware configuration. Accepts a
+        `BeebModel` enum member or its wire string (`"b"`, `"master"`,
+        `"mos35"`, `"compact"`). See the `BeebModel` docstring for the
+        per-model details and the disc-image format each one expects.
 
         `cycles` is beebjit's total cycle cap (`-cycles` flag). The
         default is effectively unbounded for short-lived sessions
@@ -234,11 +289,23 @@ class BeebjitDriver:
         `loaddisc` command after the fork added it.
         """
 
+        # Coerce the parameter to a `BeebModel` member up front so a
+        # bad value fails at construction with a clear error rather
+        # than later at spawn time. The `(str, Enum)` base means
+        # passing either a member or the wire string both work.
+        try:
+            modelEnum = BeebModel(model)
+        except ValueError as exc:
+            raise ValueError(
+                f"unknown model {model!r}; expected one of "
+                f"{[m.value for m in BeebModel]}"
+            ) from exc
+
         # Paths and session config are immutable for the lifetime of
         # this driver; changing the model or cycles cap mid-session
         # would need a restart and is not supported.
         self._binaryPath: Path = Path(binaryPath)
-        self._model: str = model
+        self._model: BeebModel = modelEnum
         self._cycles: int = cycles
 
         # Subprocess and reader-thread handles are set by `start()`.
@@ -299,6 +366,7 @@ class BeebjitDriver:
             "-fast",
             "-cycles",
             str(self._cycles),
+            *_MODEL_ARGV[self._model],
         ]
 
         # Per-session scratch dir for files exchanged with beebjit
@@ -336,6 +404,38 @@ class BeebjitDriver:
         # This is the "machine is up and ready for commands" gate
         # that every other method depends on.
         self._waitForFirstPrompt(initialPromptTimeout)
+
+    def coldBootWithAutoboot(
+        self,
+        drive: int,
+        path: Path | str,
+        writeable: bool = False,
+        mutable: bool = False,
+        settleCycles: int = 20_000_000,
+    ) -> None:
+        """Hold SHIFT from cycle 0, mount `path`, advance cycles.
+
+        This mirrors a real user holding SHIFT before powering the
+        BBC on with a disc inserted, and matches what beebjit's
+        argv-time `-autoboot` does internally. SHIFT is in the matrix
+        from the very first MOS instruction, so the boot keyboard
+        scan reads it and dispatches autoboot accordingly. Works
+        across every supported model, including Master 128 / MOS 3.50
+        which ignores a mid-session SHIFT+BREAK.
+
+        Must be called immediately after `start()` (or `restart()`),
+        while the CPU is still at cycle 0. Calling it on a session
+        that has already advanced cycles silently misses the boot
+        keyboard scan window because MOS init has already run.
+
+        `writeable` and `mutable` flow through to `loadDisc` with the
+        same semantics as the standalone tool.
+        """
+
+        self.keyDown(BBC_KEY_SHIFT_LEFT)
+        self.loadDisc(drive, path, writeable=writeable, mutable=mutable)
+        self.runCycles(settleCycles)
+        self.keyUp(BBC_KEY_SHIFT_LEFT)
 
     def close(self) -> None:
         """Send `q`, wait for exit, join readers. Idempotent.
@@ -977,82 +1077,41 @@ class BeebjitDriver:
         MOS's keyboard-matrix scan window so the OS picks up SHIFT+BREAK
         and runs the inserted disc's `!BOOT`.
 
-        The settle signal is a memory-write breakpoint on the banner
-        row at `&7C28`. The row is wiped before pressing F12 so the
-        breakpoint can only fire on a fresh post-reset write, not on
-        the stale contents from before this call (RES does not clear
-        RAM; only MOS init does). The breakpoint fires the moment MOS
-        prints the banner during boot, which is past the early init
-        and the keyboard-matrix scan, so SHIFT held until that point
-        covers the autoboot dispatch.
+        The SHIFT-hold window is open-loop, anchored on cycle count.
+        A closed-loop banner-write watch worked on three of the four
+        supported models but tripped on MOS 3.50, which writes the
+        banner row in two passes during boot. The watch fired twice,
+        and SHIFT released before MOS's autoboot scan. A pure
+        cycle-count window covers the dispatch on every model
+        without that interaction.
         """
 
-        # Banner row is row 1 of MODE 7 screen RAM (`&7C28`-..).
-        # Cold-boot fills it with "BBC Computer 32K"; we watch the
-        # "BBC Computer" prefix specifically because the size suffix
-        # differs across model variants.
-        bannerAddr = MODE7_BASE_ADDR + 40
-        bannerLen = len(b"BBC Computer")
-        bannerEnd = bannerAddr + bannerLen
+        del timeout  # legacy parameter; no longer needed
 
-        # Wipe the stale banner so the breakpoint fires only on the
-        # fresh write that MOS does during reset.
-        self.writeMemory(bannerAddr, bytes(bannerLen))
+        if autoboot:
+            self.keyDown(BBC_KEY_SHIFT_LEFT)
+        self.keyDown(BBC_KEY_BREAK)
 
-        # Arm a conditional memory-write watch over the banner range,
-        # firing only when the accumulator holds a printable character
-        # (greater than ASCII space). MOS does two screen-init passes
-        # before the real banner: zeros via `STA` with A=0, then spaces
-        # via `STA` with A=0x20. Filtering on `a > 32` skips both
-        # passes and fires on the first character of "BBC Computer".
-        # The expression engine evaluates `mem` as the pre-write value,
-        # which is always zero here because of our pre-clear above, so
-        # `mem != 0` would never match either pass.
-        self.sendCommand(
-            f"bmw {bannerAddr:x} {bannerEnd:x} expr 'a > 32'"
-        )
+        # Brief run with F12 asserted so the RES line is held on a
+        # running CPU. 200k is comfortably above the few cycles a real
+        # BBC needs to register RES.
+        self.runCycles(200_000, timeout=5.0)
 
-        try:
-            if autoboot:
-                self.keyDown(BBC_KEY_SHIFT_LEFT)
-            self.keyDown(BBC_KEY_BREAK)
+        self.keyUp(BBC_KEY_BREAK)
 
-            # Brief run with F12 asserted so the RES line is held on
-            # a running CPU. 200k is comfortably above the few cycles
-            # a real BBC needs to register RES; the CPU is in RES for
-            # this whole window so no memory writes happen, and the
-            # banner watch cannot fire here.
-            self.runCycles(200_000, timeout=5.0)
-
-            self.keyUp(BBC_KEY_BREAK)
-
-            # Wait for the first non-space write to the banner range.
-            # The watch is the only stop condition, so `c` returns at
-            # MOS's first character of "BBC Computer".
-            self.sendCommand("c", timeout=timeout)
-
-            if autoboot:
-                # Hold SHIFT through MOS's autoboot dispatch window,
-                # which can land after the banner-print start. Banner
-                # print fires the watch at ~700k post-Break; the
-                # SHIFT+BREAK detection and dispatch can run for up
-                # to ~1.5M cycles after that, depending on the OS
-                # version.
-                self.runCycles(1_500_000, timeout=10.0)
-                self.keyUp(BBC_KEY_SHIFT_LEFT)
-        finally:
-            # Delete the watch even if `c` timed out, so the next
-            # `runCycles` is not derailed by an unrelated banner
-            # write firing this leftover breakpoint.
-            self.sendCommand("db 0")
-
-        # Let MOS finish settling and let an autobooted `!BOOT` start
-        # running. Without this, only the first character of "BBC
-        # Computer" is in screen RAM when `reset()` returns. 1M
-        # cycles past the banner-print start lands at a stable boot
-        # screen for non-autoboot resets, and inside `!BOOT`
-        # execution for autoboot resets.
-        self.runCycles(1_000_000, timeout=5.0)
+        if autoboot:
+            # SHIFT-held window covering MOS init plus the autoboot
+            # keyboard scan and dispatch on every supported model.
+            # 10M cycles is comfortably more than the ~3M-cycle
+            # window the argv-time path uses internally and covers
+            # MOS 3.50, which takes longer to reach its scan than
+            # MOS 1.20 and 3.20.
+            self.runCycles(10_000_000, timeout=15.0)
+            self.keyUp(BBC_KEY_SHIFT_LEFT)
+        else:
+            # Settle to the BASIC prompt. 5M cycles is enough for
+            # every supported MOS to finish init.
+            self.runCycles(5_000_000, timeout=10.0)
 
     # -----------------------------------------------------------------
     # Keyboard input

@@ -68,7 +68,7 @@ Three common causes:
 
 - `BAILING: couldn't open roms/os12.rom`. The `roms/` directory is not next to the binary. Either move the binary alongside `roms/`, or symlink `roms/` to the binary's directory.
 
-- `unknown option -log-stderr`. The binary is upstream beebjit, not the fork. The server depends on the fork's `-log-stderr` patch. See [installation](installation.md#install-beebjit) for fork acquisition.
+- `unknown option -log-stderr`. The binary does not support the `-log-stderr` flag the server depends on. See [installation](installation.md#install-beebjit) for the supported binary.
 
 - Silent exit with no stderr output. Usually a binary built for a different CPU or glibc. Rebuild from source on the target host.
 
@@ -80,7 +80,7 @@ Three common causes:
 
 Error message: `could not parse registers from: ...`. The `r` command's output did not include a parseable `6502 [...]` line. Two typical causes:
 
-- Upstream beebjit (no `-log-stderr` flag). Info lines interleave with debugger output and break the parser. Switch to the fork.
+- Binary does not support `-log-stderr`. Info lines interleave with debugger output and break the parser. See [installation](installation.md#install-beebjit) for the supported binary.
 
 - A mid-command beebjit crash. The subprocess exited while the driver was waiting for `r` to return. The error's stderr tail contains the crash message (BAILING line or assertion).
 

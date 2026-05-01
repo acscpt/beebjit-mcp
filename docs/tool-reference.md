@@ -1,12 +1,12 @@
 # Tool reference
 
-This is the human-facing reference for the MCP tools the server exposes. The agent's actual view comes from the live schema served at runtime via `tools/list`, derived from the FastMCP decorators in `src/beebjit_mcp/server.py`.
+This is the human-facing reference for the MCP tools the server exposes. An AI agent's actual view comes from the live schema served at runtime via `tools/list`.
 
-This document mirrors that schema and adds the prose context (purpose, edge cases, composition guidance) that the schema cannot carry. If the document and the live schema diverge, the schema wins.
+- Every tool takes a JSON object and returns a JSON object.
 
-Every tool takes a JSON object and returns a JSON object. `session_id` identifies which BBC Micro to act on and comes back from `create_machine`. Calls are serialised end-to-end: each tool call is one request, one response, and the server does not run two tool bodies in parallel against the same session.
+- `session_id` identifies which emulator instance to act on and is returned from a call to `create_machine`.
 
-The project is pre-alpha. Tool names, parameter lists, and return shapes can change before the first tagged release.
+- Calls are synchronous, each tool call is one request and awaits the response. The server does not run two tool bodies in parallel against the same session.
 
 ## Index
 
@@ -55,9 +55,15 @@ Boot a fresh BBC Micro session.
 
 **Parameters**
 
-- `model` *(string, default `"b"`)*: BBC model. Only `"b"` (BBC B) is supported.
+- `model` *(string, default `"b"`)*: BBC hardware configuration. One of:
+  - `"b"`: BBC B with MOS 1.20 and the 8271 floppy controller.
+  - `"master"`: Master 128 with MOS 3.20.
+  - `"mos35"`: Master 128 with MOS 3.50.
+  - `"compact"`: Master Compact.
 
-- `disc` *(string | null, default `null`)*: Absolute path to an SSD or DSD disc image. When set, the BBC cold-boots, the disc is mounted into drive 0 read-only via the debugger, then SHIFT+BREAK runs the disc's `!BOOT` file. For a writeable mount or for non-default drive selection, omit this parameter and call [`load_disc`](#load_disc) directly after `create_machine`.
+  Disc-image format follows from the model. BBC B and the two Master 128 variants read DFS images (`.ssd` and `.dsd`); Master Compact reads ADFS images (`.adl` and `.adf`). Mounting an unsupported format on a model leaves the OS at the BASIC prompt because its filing system rejects the layout it sees.
+
+- `disc` *(string | null, default `null`)*: Absolute path to a disc image (DFS `.ssd` or `.dsd`, or ADFS `.adl` or `.adf`). When set, SHIFT is held in the keyboard matrix from cycle zero, the disc is mounted into drive 0 read-only, and MOS init reads SHIFT during its boot keyboard scan and runs the disc's `!BOOT`. The gesture matches a real user holding SHIFT before powering on with a disc inserted. For a writeable mount or for non-default drive selection, omit this parameter and call [`load_disc`](#load_disc) directly after `create_machine`.
 
 **Returns**
 
@@ -143,9 +149,9 @@ Hard-reset the running BBC without tearing down the session. Equivalent to a use
 
 **Notes**
 
-The reset blocks until the boot banner is back in MODE 7 screen RAM, so the call returns with the BBC at a fresh BASIC prompt (or whatever the autoboot disc landed on). If the banner does not reappear within thirty seconds, the call raises rather than returning silently.
+The reset taps F12 to assert the 6502 RESET line, then advances the BBC for a fixed cycle budget that is generous enough for MOS init to settle on every supported model. The call returns with the BBC at a fresh BASIC prompt (or, with `autoboot=true`, with the disc's `!BOOT` already running).
 
-`autoboot=true` only matters when a disc is mounted in drive 0 (either at `create_machine` time or via [`load_disc`](#load_disc)). Without a disc, the SHIFT held during BREAK is harmless and the OS comes up at the BASIC prompt as usual.
+`autoboot=true` injects SHIFT before the BREAK and holds it through the autoboot keyboard-scan window, matching the BBC SHIFT+BREAK convention that runs an inserted disc's `!BOOT`. SHIFT held during reset is harmless on a session without a disc; the OS comes up at the BASIC prompt regardless.
 
 [^ Index](#index)
 
@@ -176,7 +182,7 @@ Mount a disc image into a drive at runtime. The BBC keeps its current state; the
 
 - `BeebjitError` if beebjit's own pre-checks reject the mount (extension, slot count, file readability). The error message includes beebjit's own `loaddisc: failed (see log) for ...` line.
 
-- `BeebjitError` if the running beebjit binary predates the `loaddisc` debugger command. See [binary discovery](binary-discovery.md) for the minimum fork version.
+- `BeebjitError` if the running beebjit binary does not support runtime disc mounting. See [binary discovery](binary-discovery.md) for the minimum binary requirements.
 
 **Example**
 
@@ -216,9 +222,7 @@ Same shape as [`load_disc`](#load_disc): `ok`, `drive`, `disc`, `writeable`, `mu
 
 **Errors**
 
-- Same Python-side and beebjit-side errors as [`load_disc`](#load_disc).
-
-- `BeebjitError` if the post-reset boot banner does not reappear within thirty seconds. Same timeout as [`reset`](#reset).
+- Same errors as [`load_disc`](#load_disc).
 
 **Example**
 
@@ -238,7 +242,7 @@ Same shape as [`load_disc`](#load_disc): `ok`, `drive`, `disc`, `writeable`, `mu
 
 **Notes**
 
-Equivalent to [`load_disc`](#load_disc) followed by [`reset`](#reset)`(autoboot=true)`. Blocks until the boot banner is back in MODE 7 screen RAM, so the call returns with the disc's `!BOOT` already running (or already finished).
+Equivalent to [`load_disc`](#load_disc) followed by [`reset`](#reset)`(autoboot=true)`. The gesture matches a real user holding SHIFT and pressing BREAK on a running BBC after inserting a disc; the running BBC's state is otherwise preserved through the soft reset. The call returns once the post-reset settle window has elapsed, so the disc's `!BOOT` is already running (or already finished) by then.
 
 [^ Index](#index)
 
@@ -381,7 +385,7 @@ Type an ASCII string as BBC keypresses.
 
 **Errors**
 
-- `UnsupportedCharError` for characters without a BBC matrix mapping. Surfaced as an MCP tool-call error. The character table lives in `src/beebjit_mcp/keyboard.py`; extending it for a missing glyph is a few lines.
+- `UnsupportedCharError` for characters without a BBC matrix mapping. Surfaced as an MCP tool-call error.
 
 **Example**
 
@@ -693,7 +697,7 @@ Capture the current rendered BBC screen as a PNG.
 
 **Errors**
 
-- "no render buffer" surfaced from beebjit itself when the binary lacks the render buffer (typically: launched without `-headless-render`, or built before the `savescreen` debugger command landed). See [binary discovery](binary-discovery.md) for the minimum fork version.
+- "no render buffer" surfaced from beebjit itself when the binary lacks the render buffer (typically: launched without `-headless-render`, or running a build that does not support the screen-capture debugger command). See [binary discovery](binary-discovery.md) for the minimum binary requirements.
 
 **Example**
 
@@ -854,7 +858,7 @@ Class method bodies are a known limitation. Editing a method on `BeebjitDriver` 
 
 ## Worked example: HELLO round trip
 
-The six-call sequence that `tests/test_hello.py::testServerHelloRoundTripViaMcp` exercises end-to-end:
+A six-call end-to-end sequence that boots a session, runs a one-line BBC BASIC program, captures the screen, and tears the session down:
 
 ```text
 1. create_machine {}

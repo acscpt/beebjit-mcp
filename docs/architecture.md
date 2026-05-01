@@ -174,7 +174,7 @@ These are properties of the system that are deliberately invariant. They constra
 
 - **Tool calls are synchronous and serialised within a session.**
   - A second call cannot start until the first returns.
-  - The MCP transport is request and response, the FastMCP dispatcher is single-threaded, and the driver enforces one outstanding debugger command at a time.
+  - The MCP transport is request and response, the MCP dispatcher is single-threaded, and the driver enforces one outstanding debugger command at a time.
 
 - **No state persists across server restarts.**
   - The session dictionary is in-memory only.
@@ -212,7 +212,7 @@ Behaviours that affect every tool, not just one of them. Documented here once ra
   - The second call returns cleanly, which keeps retrying clients from accumulating errors on a session that has already been torn down.
 
 - **Concurrency.**
-  - Each server process handles one MCP client at a time, and the FastMCP dispatcher serialises tool calls.
+  - Each server process handles one MCP client at a time, and the MCP dispatcher serialises tool calls.
   - Sessions never see overlapping requests.
   - Multiple server processes on the same host are independent and share nothing.
 
@@ -234,7 +234,7 @@ Behaviours that affect every tool, not just one of them. Documented here once ra
 ## License boundary
 
 - **The beebjit binary is never bundled** keeping separation of licenses.
-  - beebjit (or any fork) is GPLv3
+  - beebjit is GPLv3
   - beebjit-MCP is MIT
 
 

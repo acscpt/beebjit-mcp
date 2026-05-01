@@ -76,7 +76,7 @@ async def _bootDiscCyclesWrap(
             try:
                 await session.call_tool(
                     "run_for_cycles",
-                    {"session_id": sessionId, "cycles": 5_000_000},
+                    {"session_id": sessionId, "cycles": 15_000_000},
                 )
                 regsBefore = await session.call_tool(
                     "read_registers", {"session_id": sessionId}
@@ -163,7 +163,7 @@ def testBootDiscWrapsCycleCounterViaMcp(
     cyclesBefore, cyclesAfter, reply = asyncio.run(
         _bootDiscCyclesWrap(_buildParams(beebjitBinary), discPath)
     )
-    assert cyclesBefore > 5_000_000, cyclesBefore
+    assert cyclesBefore > 15_000_000, cyclesBefore
     assert cyclesAfter < cyclesBefore, (cyclesBefore, cyclesAfter)
     assert reply["ok"] is True
     assert reply["drive"] == 0
