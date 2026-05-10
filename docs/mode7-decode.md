@@ -29,7 +29,7 @@ The server handles this in `driver.captureMode7Bytes` and `screen.rotateMode7Pag
 
 4. Rotate: `display = page[offset:] + page[:offset]`, then trim to 1000 bytes.
 
-A flat read of 1000 bytes from `&7C00` (as early drafts did) matches the display only before any scroll has happened. Once the screen starts scrolling, the rows come back in the wrong order.
+A flat read of 1000 bytes from `&7C00` matches the display only before any scroll has happened. Once the screen starts scrolling, the rows come back in the wrong order.
 
 During cold boot, before the MOS has written the pointer, `&0350/&0351` holds uninitialised RAM (typically `0xFFFF`). The driver detects an out-of-range pointer and falls back to `&7C00` so callers polling the screen during boot (for example `run_until_prompt`) get arbitrary but exception-free output rather than a hard failure.
 
@@ -53,14 +53,12 @@ The teletext character set overlaps ASCII but is not identical. Three ranges mat
 
 - `Mode7Controls.ESCAPE`: four-character `\xNN` escape per non-printable byte. Row widths become variable. Use when callers need to round-trip the original byte value out of the decoded string.
 
-```python
-from beebjit_mcp.screen import Mode7Controls, decodeMode7
+```json
+// Default behaviour: control bytes render as space, rows stay 40 wide
+{"session_id": "<uuid>"}
 
-# Default: spaces for control bytes, 40-char rows
-rows = decodeMode7(framebuffer)
-
-# Inspect raw bytes round-tripped into the decoded string
-rows = decodeMode7(framebuffer, controls=Mode7Controls.ESCAPE)
+// Round-trip raw bytes by switching the `controls` parameter
+{"session_id": "<uuid>", "controls": "escape"}
 ```
 
 `Mode7Controls` is a `(str, Enum)`, so the JSON wire format `"space"` / `"question"` / `"escape"` is accepted directly by the MCP tool and converted to the matching member before the decoder runs.
