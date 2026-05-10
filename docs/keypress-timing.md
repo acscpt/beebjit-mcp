@@ -1,17 +1,17 @@
 # Keypress timing
 
-`tapKey` is the driver method that sends a single BBC keypress. It emits one `keydown`, runs the BBC for HOLD cycles, emits one `keyup`, runs the BBC for GAP cycles, and then returns. `type_input` chains `tapKey` calls across an ASCII string using the default HOLD and GAP, which are both 5 million BBC cycles.
+`type_input` sends each character as a single BBC keypress. The keypress emits a keydown, runs the BBC for HOLD cycles, emits a keyup, then runs the BBC for GAP cycles before the next keypress. Default HOLD and GAP are both 5 million BBC cycles.
 
 Ten million cycles per character looks extravagant on paper. At the real 2 MHz BBC clock it would be 5 seconds per key. The unit matters: those are BBC cycles, not host cycles. The driver always runs beebjit with `-fast`, so each character completes in a few milliseconds of host wall time. The reason the BBC-side budget is that big is the BBC MOS keyboard ISR. Processing a keypress (latching CA2 on the system VIA, walking the matrix, debouncing, placing a byte in the OS keyboard buffer, clearing IFR, and re-arming IER for the next press) takes millions of emulated cycles to run to completion. A shorter HOLD or GAP leaves that work unfinished and the key is silently dropped.
 
-The 5M/5M default is tuned for 100% reliability against the stock MOS keyboard path from a clean boot. Callers can override per-call by passing `holdCycles` and `gapCycles` to `tapKey` directly. Any reduction below 5M without a corresponding poll-for-VIA-ready strategy will drop keys on some fraction of runs. The measurements below show where the thresholds are and what the failure modes look like.
+The 5M/5M default is tuned for 100% reliability against the stock MOS keyboard path from a clean boot. Any reduction below 5M without a corresponding poll-for-VIA-ready strategy will drop keys on some fraction of runs. The measurements below show where the thresholds are and what the failure modes look like.
 
 ## The defaults
 
-```python
-DEFAULT_KEY_HOLD_CYCLES: int = 5_000_000
-DEFAULT_KEY_GAP_CYCLES:  int = 5_000_000
-```
+| Parameter | Default value |
+| --- | --- |
+| HOLD | 5,000,000 BBC cycles |
+| GAP  | 5,000,000 BBC cycles |
 
 Per character typed: 10M BBC cycles total, plus the host-time cost of four debugger commands (`keydown`, `breakat; c` for the HOLD run, `keyup`, `breakat; c` for the GAP run). At `-fast` that is a few ms of host wall time per character.
 
@@ -82,6 +82,6 @@ HOLD=3M works for a single clean-boot press but drops roughly 40% of keys in a m
 
 - **Long scripted input** scales linearly: 1000 characters is 10 billion BBC cycles, roughly 5 seconds of host time at `-fast`. If the screen scroll between keystrokes matters to the test, break the input with `run_for_cycles` calls between chunks.
 
-- **Non-standard keyboard handlers** (programs that hook their own routines rather than going through OSBYTE or OSRDCH) may observe different thresholds. The 5M/5M numbers are tuned for the stock MOS path. For such programs, override `holdCycles` and `gapCycles` on `tapKey` to values established by probing.
+- **Non-standard keyboard handlers** (programs that hook their own routines rather than going through OSBYTE or OSRDCH) may observe different thresholds. The 5M/5M numbers are tuned for the stock MOS path; the MCP tool surface does not currently expose per-call cycle overrides. Use `key_down` / `key_up` and `run_for_cycles` directly to assemble timing tailored to the target program.
 
 - **Autorepeat** is not a concern at these defaults. The BBC OS autorepeat threshold is longer than 5M cycles; a held key at HOLD=5M never triggers it.
