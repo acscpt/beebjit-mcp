@@ -90,7 +90,7 @@ Error message: `could not parse registers from: ...`. The `r` command's output d
 
 Error message: `no prompt within <N>s after '<cmd>'`. The driver wrote a command to beebjit and did not receive a prompt before the timeout. Two typical causes:
 
-- A bare `c` with no armed stop condition, which lets the BBC run forever. This should not surface from the MCP tool surface. If it does, that indicates a server bug.
+- A bare `c` with no armed stop condition lets the BBC run forever. This should not reach the MCP tool surface; if it does, file a server bug.
 
 - A deadlocked subprocess. A beebjit assertion or an infinite loop in emulated code that does not produce stdout output. The subprocess is still alive. `destroy_machine` escalates to `SIGKILL` and starts fresh.
 
@@ -104,7 +104,7 @@ Error message: `no BBC key for '?'`. `type_input` was given an ASCII character t
 
 ### `???` returned by beebjit
 
-beebjit parsed a debugger command it did not recognise. The driver only issues commands that beebjit's parser accepts, so a `???` indicates the reader and writer have drifted out of step. Recovery requires `destroy_machine` followed by a fresh `create_machine`.
+beebjit parsed a debugger command it did not recognise. The server only issues commands that beebjit's parser accepts, so a `???` indicates communication has fallen out of sync. Recovery requires `destroy_machine` followed by a fresh `create_machine`.
 
 [^ Index](#index)
 
@@ -136,7 +136,7 @@ CAPS LOCK is still ON. `type_input_raw` assumes CAPS LOCK OFF so that unshifted 
 
 ### `run_for_cycles` returns a higher `cycles_total` than expected
 
-beebjit may overshoot a breakpoint by a few instructions because the break fires between instructions and beebjit can be partway through one when it notices. The overshoot is bounded to under ten cycles in practice. The returned `cycles_total` is the exact stopping point. Use it if the cycle budget needs to be spent accurately.
+beebjit may overshoot a breakpoint by a few instructions. The break fires at instruction boundaries, and beebjit can be partway through executing one when it notices. The overshoot is bounded to under ten cycles in practice. The returned `cycles_total` is the exact stopping point. Use it if the cycle budget needs to be spent accurately.
 
 [^ Index](#index)
 
@@ -156,7 +156,7 @@ Three candidate causes:
 
 ### `destroy_machine` returns `{"ok": false}`
 
-The session id is not in the server's dict. Either it was destroyed already, or it was never created. Idempotent by design, safe to ignore.
+The session id is unknown to the server, either destroyed already or never created. Idempotent by design, safe to ignore.
 
 [^ Index](#index)
 
