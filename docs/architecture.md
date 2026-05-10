@@ -2,7 +2,7 @@
 
 As a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) [server](https://modelcontextprotocol.io/specification/draft/server), beebjit-MCP exposes [beebjit](https://github.com/scarybeasts/beebjit), a cycle-accurate BBC Micro emulator, to MCP-capable [clients](https://modelcontextprotocol.io/specification/draft/architecture) such as Claude Desktop, Claude Code, and Cursor. Through it, an AI agent can drive a live BBC Micro: type at it, run BASIC, read memory and registers, capture screen text.
 
-The abstraction the server provides is a set of [MCP tools](https://modelcontextprotocol.io/specification/draft/server/tools) (`create_machine`, `type_input`, `read_memory`, and so on) layered over the interactive debugger that beebjit exposes on its standard streams. Each [tool call](https://modelcontextprotocol.io/specification/draft/server/tools#calling-tools) translates into a short sequence of debugger commands that the server writes and reassembles. The agent never sees the debugger prompt, beebjit never sees JSON.
+The abstraction the server provides is a set of [MCP tools](https://modelcontextprotocol.io/specification/draft/server/tools) (`create_machine`, `type_input`, `read_memory`, and so on) layered over the interactive debugger that beebjit exposes on its standard streams. Each [tool call](https://modelcontextprotocol.io/specification/draft/server/tools#calling-tools) translates into a short sequence of debugger commands that the server writes and reassembles. The agent never sees the debugger prompt; beebjit never sees JSON.
 
 Each beebjit subprocess holds one BBC Micro's worth of state, so concurrent sessions are fully independent. Running multiple machines in parallel is a matter of spawning more subprocesses and keeping a dict of them.
 
@@ -12,7 +12,7 @@ The beebjit-MCP server is organised into three layers:
 
 - The MCP client that communicates with the server using JSON-RPC.
 
-- The server, which exposes the tools for the MCP client to call and orchestrates the actual interaction between the client and a `beebjit` instance via its debugger REPL interface using:
+- The server, which exposes the tools the MCP client calls and orchestrates the interaction between the client and a `beebjit` instance over the debugger REPL, with:
   - **driver** for the actual interfacing with beebjit
   - **keyboard** mapping of host keys to BBC key events
   - **screen** decoding screen framebuffers
@@ -103,7 +103,7 @@ sequenceDiagram
 
 1. The tool function looks up the driver in the session dictionary and calls the appropriate method. This is the only step that distinguishes one session from another.
 
-1. The driver writes one or more debugger commands to beebjit's stdin. `runCycles` for example sends a register read followed by a breakpoint-armed continuation.
+1. The driver writes one or more debugger commands to beebjit's stdin. `runCycles`, for example, sends a register read followed by a breakpoint-armed continuation.
 
 1. beebjit replies on stdout, terminating with the debugger prompt.
 
@@ -133,7 +133,7 @@ sequenceDiagram
 
 ## Modules
 
-The beebjit-MCP consists of four primary modules, each with a distinct responsibility. Imports flow downward only.
+The beebjit-MCP server consists of five modules, each with a distinct responsibility. Imports flow downward only.
 
 ```mermaid
 flowchart TD
@@ -230,15 +230,6 @@ Behaviours that affect every tool, not just one of them. Documented here once ra
   - The main thread drives the REPL interaction, writing each command and collecting the response.
   - Two reader threads handle beebjit's stdout and stderr, capturing the debugger output from stdout and the emulator's internal logging from stderr.
   - Both readers are daemons, so an abandoned driver does not hang Python interpreter shutdown.
-
-## License boundary
-
-- **The beebjit binary is never bundled** keeping separation of licenses.
-  - beebjit is GPLv3
-  - beebjit-MCP is MIT
-
-
-- Discovery happens at runtime through the documented search order.
 
 ## Further reading
 
