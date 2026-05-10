@@ -6,15 +6,15 @@ This walks you from nothing to a live `HELLO` on a BBC Micro screen driven by an
 
 Follow the [installation guide](installation.md). It covers the beebjit emulator, beebjit-MCP itself, and wiring the server up to your MCP client (Claude Code, Claude Desktop, Cursor, or any other stdio MCP client).
 
-## Ghost in the machine
+## A Ghost in the machine
 
-A machine from 1983 being driven by an AI agent/LLM over MCP.
+A 1981 microcomputer driven directly by a 2026 AI agent.
 
-Ask the  agent to drive the emulator. The natural-language prompt does not matter much. The agent picks tools off the MCP server.
+Ask the agent to drive the emulator. The natural-language prompt does not matter much, and the agent picks tools off the MCP server regardless.
 
 Something like:
 
-> "Start a BBC Micro, type `PRINT \"HELLO FROM BEEBJIT-MCP\"`, wait for `HELLO` to appear, and read back the screen."
+> Start a BBC Micro and type a BASIC program to print "HELLO FROM BEEBJIT-MCP", wait for it to appear, then capture the screen.
 
 Under the hood the agent issues this sequence:
 
@@ -22,7 +22,7 @@ Under the hood the agent issues this sequence:
 
 2. `run_for_cycles` with 5M cycles. Lets the MOS ROMs boot past the banner to the `>` prompt.
 
-3. `type_input` with `PRINT "HELLO FROM BEEBJIT-MCP"\n`. Keys the statement in, the trailing `\n` is RETURN.
+3. `type_input` with `PRINT "HELLO FROM BEEBJIT-MCP"\n`. Keys the statement in; the trailing `\n` is RETURN.
 
 4. `run_until_text` looking for `HELLO`. Gives BASIC time to tokenise and run.
 
@@ -44,8 +44,6 @@ BASIC
 HELLO FROM BEEBJIT-MCP
 >
 ```
-
-That is the full round trip.
 
 Everything else in the [Tool reference](tool-reference.md) composes from these same primitives.
 
