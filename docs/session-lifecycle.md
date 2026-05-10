@@ -113,7 +113,7 @@ On the clean path, the server sends `q`, beebjit calls `exit(0)`, stdout closes,
 
 ## `reset`
 
-`reset` hard-resets the BBC without ending the session. The subprocess and its pipes are unaffected, the same `session_id` continues to work after the call returns. From the client's point of view the BBC has been freshly booted: the 6502 cycle counter has wrapped near zero, BASIC variables and the program are gone, and the boot banner is back at row 1 of MODE 7 screen RAM.
+`reset` hard-resets the BBC without ending the session. The subprocess and its pipes are unaffected; the same `session_id` continues to work after the call returns. From the client's point of view the BBC has been freshly booted: the 6502 cycle counter has wrapped near zero, BASIC variables and the program are gone, and the boot banner is back at row 1 of MODE 7 screen RAM.
 
 ```mermaid
 sequenceDiagram
@@ -144,11 +144,11 @@ sequenceDiagram
 
 The mechanism is keypress synthesis. F12 is what beebjit accepts for the BBC BREAK key, so injecting `keydown 152` and running briefly with it asserted puts the 6502 into RES. Releasing it lets the OS reset path run, and a generous open-loop cycle window covers MOS init's settle on every supported model.
 
-`autoboot=true` brackets the BREAK with SHIFT, matching the BBC SHIFT+BREAK convention that runs an inserted disc's `!BOOT`. SHIFT is held through the post-BREAK cycle window so MOS reads it during the boot keyboard scan. SHIFT held during reset is harmless on a session created without a disc, the OS comes up at the BASIC prompt regardless.
+`autoboot=true` brackets the BREAK with SHIFT, matching the BBC SHIFT+BREAK convention that runs an inserted disc's `!BOOT`. SHIFT is held through the post-BREAK cycle window so MOS reads it during the boot keyboard scan. SHIFT held during reset is harmless on a session created without a disc; the OS comes up at the BASIC prompt regardless.
 
 Total wallclock time is on the order of a few hundred milliseconds at `-fast`.
 
-After `reset` returns, the session is back in steady state. Any prior tool call's effect on the BBC (typed input, written memory, set breakpoints) is gone, everything outside the BBC (the driver, the subprocess, the session id, the per-session temp directory used by `screenshot`) survives.
+After `reset` returns, the session is back in steady state. Any prior tool call's effect on the BBC (typed input, written memory, set breakpoints) is gone; everything outside the BBC (the driver, the subprocess, the session id, the per-session temp directory used by `screenshot`) survives.
 
 ## Error modes
 
