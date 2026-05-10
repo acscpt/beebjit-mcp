@@ -12,7 +12,7 @@ If neither resolves, the call fails with a clear error.
 
 ## `$BEEBJIT`
 
-The easiest way to point to the beebjit executable is to set `$BEEBJIT` environment variable.
+The easiest way to point to the beebjit executable is to set the `$BEEBJIT` environment variable.
 
 > [!IMPORTANT]
 > `$BEEBJIT` must point at the beebjit executable, not the directory containing it:
@@ -22,7 +22,7 @@ export BEEBJIT=/home/you/beebjit/beebjit         # correct
 export BEEBJIT=/home/you/beebjit                 # wrong (directory)
 ```
 
-If the path does not resolve to an executable file the server exits with:
+If the path does not resolve to an executable file, the server exits with:
 
 ```text
 $BEEBJIT points at '/home/you/beebjit' which is not an executable file
@@ -32,15 +32,15 @@ In an MCP client config, the same value is set under the server's `env` key rath
 
 ## ROMs directory
 
-beebjit loads its OS and language ROMs from a `roms/` directory relative to its working directory at launch. The server sets `cwd=<binary directory>` when spawning, so a binary sitting next to its `roms/` directory works without further setup. Both [install](installation.md#install-beebjit) methods will produce that layout.
+beebjit loads its OS and language ROMs from a `roms/` directory relative to its working directory at launch. The server sets `cwd=<binary directory>` when spawning, so a binary sitting next to its `roms/` directory works without further setup. Both [install](installation.md#install-beebjit) methods produce that layout.
 
-If beebjit cannot find its ROMs, for example, the binary was copied somewhere without an associated `roms/` directory, it exits with:
+If beebjit cannot find its ROMs (for example, because the binary was copied somewhere without a `roms/` directory), it exits with:
 
 ```text
 BAILING: couldn't open roms/os12.rom
 ```
 
-Two options to remedy this would be:
+Two ways to fix this:
 
 - Move or symlink the `roms/` directory next to wherever `$BEEBJIT` points.
 
@@ -48,6 +48,6 @@ Two options to remedy this would be:
 
 ## Minimum binary requirements
 
-beebjit-MCP launches every session with the flags `-log-stderr`, `-headless-render`, and `-opt video:always-render`, and the [`screenshot`](tool-reference.md#screenshot) tool also depends on the `savescreen` debugger command. The minimum binary version of [beebjit](https://github.com/acscpt/beebjit) that ships all of these is `v0.9.8-acscpt.2`.
+beebjit-MCP launches every session with the flags `-log-stderr`, `-headless-render`, and `-opt video:always-render`, and the [`screenshot`](tool-reference.md#screenshot) tool also depends on the `savescreen` debugger command. The minimum binary version of beebjit that ships all of these is `v0.9.8-acscpt.2`.
 
-See [installation.md](installation.md) for the supported binary.
+See the [installation guide](installation.md) for the supported binary.
