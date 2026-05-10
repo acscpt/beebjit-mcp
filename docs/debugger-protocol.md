@@ -4,15 +4,15 @@ The beebjit debugger is a line-oriented REPL reached by launching beebjit with `
 
 This REPL is the only channel between the driver side and beebjit. Register reads, memory dumps, keypress timing, and cycle-bounded runs are all built from the commands in this reference.
 
-The commands listed here are the ones the driver issues although beebjit's debugger has other commands driver does not currently use.
+The commands listed here are the ones the driver issues, although beebjit's debugger has other commands the driver does not currently use.
 
 ## Invocation
 
-The beebjit instance itself is instantiated with the following command line:
+beebjit is launched with the following command line:
 
 ```bash
 beebjit -headless -debug -log-stderr -fast -cycles <N> \
-        [-0 <disc> -autoboot]
+        [-0 <disc>]
 ```
 
 | Flag | Purpose |
@@ -23,7 +23,6 @@ beebjit -headless -debug -log-stderr -fast -cycles <N> \
 | `-fast` | Run the emulated CPU flat-out between timer callbacks. |
 | `-cycles N` | Cap on total session lifetime in BBC cycles. Use a large value (the server default is 1e12) so the cap acts as a backstop rather than a frequent constraint. |
 | `-0 <path>` | Insert disc image into drive 0. |
-| `-autoboot` | SHIFT-BREAK equivalent. Runs the `!BOOT` file on the inserted disc. |
 
 The working directory must contain a `roms/` directory alongside the beebjit binary. The server sets `cwd` to the binary's parent directory on spawn. See [ROMs directory](binary-discovery.md#roms-directory) for detail.
 
@@ -129,4 +128,4 @@ Quit. No output. beebjit calls `exit(0)`, stdout closes, and the driver's reader
 
 - **No first prompt at startup**. beebjit exits before emitting its first prompt. Usually the `-log-stderr` flag is unavailable (upstream binary), or `roms/` is missing from the working directory. The stderr stream contains the BAILING line.
 
-- **`???` returned**. beebjit's response to a command it does not recognise. The driver issues only the commands documented in this reference, so a `???` indicates that the reader and writer have drifted out of step. The only recovery is to terminate beebjit and start fresh.
+- **`???` returned**. beebjit's response to a command it does not recognise. The driver issues only the commands documented in this reference, so a `???` indicates that communication has fallen out of sync. The only recovery is to terminate beebjit and start fresh.
