@@ -16,7 +16,7 @@ The steps to get there are:
 
 - Linux x86-64 or Windows x86-64. Other platforms may work when built from source but are not currently published as release binaries.
 
-- `git`, `gcc`, and standard build tools, only needed for the build-from-source option below.
+- `git`, `gcc`, and standard build tools, needed only for the build-from-source option below.
 
 ## Install beebjit
 
@@ -30,7 +30,7 @@ beebjit-MCP requires the [acscpt/beebjit](https://github.com/acscpt/beebjit) for
 
 4. A `savescreen <path>` debugger command that dumps the current render buffer as a raw BGRA file. The MCP server reads this file, converts to PNG, and returns the bytes through `screenshot`.
 
-The minimum fork version that ships these changes is `v0.9.8-acscpt.2`. Earlier binaries work for every other tool but `screenshot` will surface a "no render buffer" error.
+The minimum fork version that ships these changes is `v0.9.8-acscpt.2`.
 
 There are two ways to obtain [acscpt/beebjit](https://github.com/acscpt/beebjit).
 
@@ -51,12 +51,14 @@ Tagged releases are published at [github.com/acscpt/beebjit/releases](https://gi
 The downloaded binary also needs a `roms/` directory next to it at runtime. The simplest way to get both into one place:
 
 ```bash
+# Clone the fork next to where you want it
 git clone --depth 1 https://github.com/acscpt/beebjit.git ~/beebjit
 
+# Pull down the headless release binary alongside the roms/ directory
 cd ~/beebjit
-
 wget https://github.com/acscpt/beebjit/releases/latest/download/beebjit-headless-linux-x86_64 -O beebjit
 
+# Make it executable
 chmod +x beebjit
 ```
 
@@ -64,15 +66,16 @@ This puts the released binary alongside the `roms/` directory shipped in the rep
 
 ### Build from source
 
-Building the fork requires gcc. Cross-compiling the Windows binary on Linux requires gcc-mingw.
+Building the fork requires gcc, and cross-compiling the Windows binary on Linux requires gcc-mingw.
 
 Clone the fork and build:
 
 ```bash
+# Clone the fork
 git clone https://github.com/acscpt/beebjit.git
 
+# Build the headless binary
 cd beebjit
-
 ./build_headless_opt.sh
 ```
 
@@ -83,26 +86,26 @@ The resulting `beebjit` binary sits in the repository root next to its `roms/` d
 For a standard install, use PyPI:
 
 ```bash
+# Create and activate a venv
 python -m venv ~/.venvs/beebjit-mcp
-
 source ~/.venvs/beebjit-mcp/bin/activate
 
+# Install beebjit-MCP from PyPI
 pip install beebjit-mcp
 ```
-
-The venv location is up to you. Use any path that suits your setup.
 
 For a development install:
 
 ```bash
+# Clone the repo
 git clone https://github.com/acscpt/beebjit-mcp.git
-
 cd beebjit-mcp
 
+# Create and activate a venv
 python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-source .venv/bin/activate # Windows: .venv\Scripts\activate
-
+# Install in editable mode with dev extras
 pip install -e ".[dev]"
 ```
 
