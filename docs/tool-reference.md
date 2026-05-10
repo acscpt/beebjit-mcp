@@ -6,7 +6,7 @@ This is the human-facing reference for the MCP tools the server exposes. An AI a
 
 - `session_id` identifies which emulator instance to act on and is returned from a call to `create_machine`.
 
-- Calls are synchronous, each tool call is one request and awaits the response. The server does not run two tool bodies in parallel against the same session.
+- Calls are synchronous: each tool call is one request and awaits the response. The server does not run two tool bodies in parallel against the same session.
 
 ## Index
 
@@ -37,7 +37,7 @@ This is the human-facing reference for the MCP tools the server exposes. An AI a
 
 ## Conventions
 
-- Addresses and cycle counts are base-10 integers in JSON. Hex literals work too (`0x7C00` or `31744` both parse).
+- Addresses and cycle counts are JSON integers. Both `31744` (decimal) and `0x7C00` (hex) parse to the same value.
 
 - `session_id` is an opaque UUID string returned by `create_machine`. Every tool except `create_machine` and `reload_module` takes one as its first parameter. The per-tool **Parameters** sections below list only the additional parameters.
 
@@ -113,7 +113,7 @@ Tear a session down and release the beebjit subprocess.
 
 **Notes**
 
-The teardown sends `q` to the debugger, waits up to five seconds for beebjit to exit cleanly, and escalates to `SIGKILL` if the process is still alive. The `false` path is not an error condition. Double-destroy from a retrying client returns `{"ok": false}` cleanly without crashing the server.
+The teardown sends `q` to the debugger, waits up to five seconds for beebjit to exit cleanly, and escalates to `SIGKILL` if the process is still alive. The `false` path is not an error condition. Double-destroy from a retrying client returns `{"ok": false}` without crashing the server.
 
 [^ Index](#index)
 
@@ -123,7 +123,7 @@ Hard-reset the running BBC without tearing down the session. Equivalent to a use
 
 **Parameters**
 
-- `autoboot` *(boolean, default `false`)*: hold SHIFT across the BREAK so an inserted disc's `!BOOT` runs as the OS comes up. The BBC convention of SHIFT+BREAK.
+- `autoboot` *(boolean, default `false`)*: hold SHIFT across the BREAK so an inserted disc's `!BOOT` runs as the OS comes up, matching the BBC SHIFT+BREAK convention.
 
 **Returns**
 
@@ -161,7 +161,7 @@ Mount a disc image into a drive at runtime. The BBC keeps its current state; the
 
 **Parameters**
 
-- `disc` *(string)*: Absolute path to an SSD or DSD disc image. The MCP layer checks the path exists before sending the command.
+- `disc` *(string)*: Absolute path to a disc image (DFS `.ssd` or `.dsd`, or ADFS `.adl` or `.adf`). The MCP layer checks the path exists before sending the command.
 
 - `drive` *(integer, default `0`)*: BBC disc drive to mount into. Either `0` or `1`.
 
@@ -202,7 +202,7 @@ Mount a disc image into a drive at runtime. The BBC keeps its current state; the
 
 **Notes**
 
-The mount does not trigger a reset or autoboot. The BBC keeps its current state and the new disc is just available for the next OS read. For mount + autoboot in one call, use [`boot_disc`](#boot_disc); for mount with explicit reset, compose `load_disc` with [`reset`](#reset)`(autoboot=true)`.
+The mount does not trigger a reset or autoboot. The BBC keeps its current state and the new disc is available for the next OS read. For mount + autoboot in one call, use [`boot_disc`](#boot_disc); for mount with explicit reset, compose `load_disc` with [`reset`](#reset)`(autoboot=true)`.
 
 `writeable` controls whether the BBC can modify the in-memory image; `mutable` controls whether those modifications persist back to the host file. The two flags compose: `writeable=true, mutable=false` is "writes survive in this session only, never reach disk", which is useful for save-game probes that should not perturb the source file.
 
@@ -324,7 +324,7 @@ The tool runs one chunk, captures the MODE 7 screen, searches the `\n`-joined ro
 
 The first screen check happens after running one chunk, not at cycle zero, so uninitialised framebuffer bytes from before the first BBC screen paint cannot produce a false positive.
 
-Smaller `chunk_cycles` checks the screen more often at the cost of one framebuffer read per chunk. The default trades responsiveness for overhead.
+Smaller `chunk_cycles` checks the screen more often at the cost of one framebuffer read per chunk. The default balances responsiveness against overhead.
 
 [^ Index](#index)
 
@@ -422,7 +422,7 @@ Type an ASCII string preserving case.
 
 **Errors**
 
-- `UnsupportedCharError` for characters without a BBC matrix mapping.
+- `UnsupportedCharError` for characters without a BBC matrix mapping. Surfaced as an MCP tool-call error.
 
 **Example**
 
@@ -610,7 +610,7 @@ Return 6502 register state.
 - `A`, `X`, `Y`, `S` *(integer)*: Standard 6502 register values, decoded as integers.
 - `F` *(string)*: beebjit's whitespace-padded 8-character flag string verbatim. Each slot is one flag; unset flags show as space, set flags carry their letter, and the unused B slot holds a literal `1`. Scan for the letter of interest rather than relying on fixed column positions.
 - `PC` *(integer)*: 16-bit program counter.
-- `cycles` *(integer)*: 64-bit total cycle count since boot. Use as the anchor for cross-call cycle arithmetic.
+- `cycles` *(integer)*: 6502-relative cycle counter (`cycles=` from `r`). Rebases near zero on every BBC Break, the same field reported by [`run_for_cycles`](#run_for_cycles)'s `cycles_total`. For cross-call cycle arithmetic that survives a soft reset, use [`run_for_cycles`](#run_for_cycles) which anchors against beebjit's monotonic tick counter internally.
 
 **Example**
 
@@ -716,7 +716,7 @@ Capture the current rendered BBC screen as a PNG.
 
 **Notes**
 
-beebjit renders the BBC screen into a BGRA framebuffer. The driver asks for the buffer via the `savescreen` debugger command, parses the dimensions from beebjit's own output line, and the server converts the BGRA pixel data into a PNG. This is mode-agnostic, so MODE 7, MODE 1, MODE 4, all return a complete rendered screen with no MCP-side per-mode logic.
+beebjit renders the BBC screen into a BGRA framebuffer. The driver asks for the buffer via the `savescreen` debugger command, parses the dimensions from beebjit's own output line, and the server converts the BGRA pixel data into a PNG. This is mode-agnostic, so MODE 7, MODE 1, MODE 4 all return a complete rendered screen with no MCP-side per-mode logic.
 
 The PNG is the rendered display, not the raw BBC framebuffer bytes. Hardware scroll, palette, and any video ULA effects are baked in at capture time. Callers wanting the raw screen RAM should use [`read_memory`](#read_memory) at the appropriate mode-base address instead.
 
