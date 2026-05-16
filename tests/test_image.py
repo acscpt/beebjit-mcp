@@ -8,7 +8,7 @@ import zlib
 
 import pytest
 
-from beebjit_mcp._png import bgraToPng
+from beebjit_mcp.image import bgraToPng
 
 
 _PNG_SIGNATURE: bytes = b"\x89PNG\r\n\x1a\n"

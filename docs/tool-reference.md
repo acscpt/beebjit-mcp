@@ -49,6 +49,8 @@ This is the human-facing reference for the MCP tools the server exposes. An AI a
 
 ## Lifecycle
 
+---
+
 ### `create_machine`
 
 Boot a fresh BBC Micro session.
@@ -93,6 +95,8 @@ The spawn is synchronous: the tool returns once beebjit has reached its first `(
 
 [^ Index](#index)
 
+---
+
 ### `destroy_machine`
 
 Tear a session down and release the beebjit subprocess.
@@ -116,6 +120,8 @@ Tear a session down and release the beebjit subprocess.
 The teardown sends `q` to the debugger, waits up to five seconds for beebjit to exit cleanly, and escalates to `SIGKILL` if the process is still alive. The `false` path is not an error condition. Double-destroy from a retrying client returns `{"ok": false}` without crashing the server.
 
 [^ Index](#index)
+
+---
 
 ### `reset`
 
@@ -154,6 +160,8 @@ The reset taps F12 to assert the 6502 RESET line, then advances the BBC for a fi
 `autoboot=true` injects SHIFT before the BREAK and holds it through the autoboot keyboard-scan window, matching the BBC SHIFT+BREAK convention that runs an inserted disc's `!BOOT`. SHIFT held during reset is harmless on a session without a disc; the OS comes up at the BASIC prompt regardless.
 
 [^ Index](#index)
+
+---
 
 ### `load_disc`
 
@@ -208,6 +216,8 @@ The mount does not trigger a reset or autoboot. The BBC keeps its current state 
 
 [^ Index](#index)
 
+---
+
 ### `boot_disc`
 
 Mount a disc and SHIFT+BREAK autoboot it in one call.
@@ -248,6 +258,8 @@ Equivalent to [`load_disc`](#load_disc) followed by [`reset`](#reset)`(autoboot=
 
 ## Execution
 
+---
+
 ### `run_for_cycles`
 
 Advance the emulator by exactly N BBC cycles.
@@ -283,6 +295,8 @@ Cycle counting is anchored against beebjit's global `total_timer_ticks` counter 
 beebjit can overshoot the breakpoint by a handful of instructions. `cycles_total` reports the exact 6502-relative stopping point and may differ from the requested target by a few cycles.
 
 [^ Index](#index)
+
+---
 
 ### `run_until_text`
 
@@ -328,6 +342,8 @@ Smaller `chunk_cycles` checks the screen more often at the cost of one framebuff
 
 [^ Index](#index)
 
+---
+
 ### `run_until_prompt`
 
 Run in chunks until a prompt character appears at the start of a MODE 7 row.
@@ -370,6 +386,8 @@ Use this when you want to wait for BASIC or the MOS to return control to the use
 
 ## Input
 
+---
+
 ### `type_input`
 
 Type an ASCII string as BBC keypresses.
@@ -407,6 +425,8 @@ Per-character cost is HOLD=5M + GAP=5M = 10M BBC cycles. A 14-character line lik
 
 [^ Index](#index)
 
+---
+
 ### `type_input_raw`
 
 Type an ASCII string preserving case.
@@ -442,6 +462,8 @@ This tool requires CAPS LOCK to be OFF. Call [`set_caps_lock`](#set_caps_lock) w
 
 [^ Index](#index)
 
+---
+
 ### `key_down` and `key_up`
 
 Low-level matrix events with no automatic timing.
@@ -476,6 +498,8 @@ These events go straight to the BBC matrix. No cycle advance, no SHIFT handling,
 
 [^ Index](#index)
 
+---
+
 ### `press_caps_lock`
 
 Tap CAPS LOCK once to toggle the current state.
@@ -500,6 +524,8 @@ Tap CAPS LOCK once to toggle the current state.
 Pure toggle. The tool does not read the current state. If you need a deterministic final state, use [`set_caps_lock`](#set_caps_lock) instead.
 
 [^ Index](#index)
+
+---
 
 ### `set_caps_lock`
 
@@ -532,6 +558,8 @@ Idempotent. The tool reads the MOS caps-lock flag at `&025A` bit 4 and taps key 
 [^ Index](#index)
 
 ## Inspection
+
+---
 
 ### `read_memory`
 
@@ -570,6 +598,8 @@ Read a contiguous block of BBC RAM.
 
 [^ Index](#index)
 
+---
+
 ### `write_memory`
 
 Poke bytes into memory starting at `addr`.
@@ -601,6 +631,8 @@ The `data` shape is symmetric with [`read_memory`](#read_memory)'s `hex` field, 
 
 [^ Index](#index)
 
+---
+
 ### `read_registers`
 
 Return 6502 register state.
@@ -631,6 +663,8 @@ Return 6502 register state.
 ```
 
 [^ Index](#index)
+
+---
 
 ### `read_mode7_text`
 
@@ -684,6 +718,8 @@ This tool is MODE-7-only. In a bitmapped mode (MODE 0-6) the returned rows are n
 
 [^ Index](#index)
 
+---
+
 ### `screenshot`
 
 Capture the current rendered BBC screen as a PNG.
@@ -723,6 +759,8 @@ The PNG is the rendered display, not the raw BBC framebuffer bytes. Hardware scr
 `width` and `height` come from beebjit's announced render geometry, not an MCP-side guess.
 
 [^ Index](#index)
+
+---
 
 ### `disassemble`
 
@@ -766,6 +804,8 @@ beebjit does not emit raw opcode bytes in its disassembly output. If you need th
 [^ Index](#index)
 
 ## Composition helpers
+
+---
 
 ### `run_basic`
 
@@ -813,6 +853,8 @@ Does not poll for the prompt after `RUN` because not every program terminates at
 [^ Index](#index)
 
 ## Development aids
+
+---
 
 ### `reload_module`
 

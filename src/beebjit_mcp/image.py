@@ -3,10 +3,10 @@
 
 """Stdlib-only BGRA-to-PNG encoder.
 
-Implementation detail of the `screenshot` MCP tool. beebjit's
-`savescreen` debugger command writes raw BGRA pixel data to disk;
-this module turns those bytes into a PNG so MCP clients receive a
-format every viewer understands.
+Public helper used by the `screenshot` MCP tool and available to
+direct Python callers. beebjit's `savescreen` debugger command writes
+raw BGRA pixel data to disk; this module turns those bytes into a
+PNG so callers receive a format every viewer understands.
 
 Single public function `bgraToPng`. Internals are stdlib `zlib`
 (deflate compression and CRC32) plus `struct` (big-endian chunk

@@ -48,7 +48,7 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - **Pre-MOS-init screen capture**: `captureMode7Bytes` now tolerates an uninitialised `&0350/&0351` pointer (typical value `0xFFFF` at cold boot) by clamping to the page base. Lets `run_until_prompt` poll through the boot phase without raising.
 
-- **`screenshot` MCP tool**: capture the current rendered BBC screen as a base64-encoded PNG, in any display mode. The driver spawns beebjit with `-headless-render` and `-opt video:always-render`, asks the debugger for a BGRA dump via `savescreen`, and a stdlib `_png` module turns those bytes into a PNG with no third-party dependency. Width and height come from beebjit's own savescreen output line so a future render-geometry change flows through automatically.
+- **`screenshot` MCP tool**: capture the current rendered BBC screen as a base64-encoded PNG. Works in any display mode and returns the PNG bytes plus width and height.
 
 - **`read_mode7_text` controls parameter**: optional `controls` selects how non-printable bytes render. `"space"` (default) and `"question"` keep rows at 40 chars wide; `"escape"` emits `\xNN` per non-printable byte for callers needing the original byte value preserved in the decoded string.  Mode7Controls enum added.
 
@@ -63,6 +63,8 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 - **Tests**: pytest suite covering driver-level primitives, MODE 7 decode, keyboard matrix, screenshot capture, end-to-end HELLO round trip over both driver and MCP, and per-model boot, render, and autoboot coverage across all four supported models.
 
 - **Documentation**: `docs/` directory with architecture, tool reference, session lifecycle, debugger protocol, emulator modes, keypress timing, MODE 7 decode, troubleshooting, development, licensing. README covers install and quickstart.
+
+- **Public Python library**: `beebjit-mcp` is now a documented Python library alongside the MCP server. Direct in-process callers can `from beebjit_mcp.driver import BeebjitDriver` (plus the `keyboard`, `screen`, and `image` submodules) and drive a BBC without going through stdio JSON-RPC. `docs/python-api.md` is the per-method reference; `BeebjitDriver`, `BeebjitError`, `BeebModel`, the lifecycle/input/state methods, plus `asciiToKeys`, `asciiToKeysRaw`, `resolveKeyName`, `decodeMode7`, `rotateMode7Page`, `mode7TextContains`, and `bgraToPng` are the supported surface.
 
 ### Fixed
 

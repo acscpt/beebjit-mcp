@@ -38,7 +38,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from beebjit_mcp._png import bgraToPng
+from beebjit_mcp.image import bgraToPng
 from beebjit_mcp.driver import BeebjitDriver
 from beebjit_mcp.keyboard import BBC_KEY_CAPS_LOCK, resolveKeyName
 from beebjit_mcp.screen import Mode7Controls, decodeMode7

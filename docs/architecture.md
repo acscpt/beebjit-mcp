@@ -16,7 +16,7 @@ The beebjit-MCP server is organised into three layers:
   - **driver** for the actual interfacing with beebjit
   - **keyboard** mapping of host keys to BBC key events
   - **screen** decoding screen framebuffers
-  - **_png** stdlib encoder for packaging screenshots as PNG
+  - **image** stdlib encoder for packaging screenshots as PNG
 
 - **`beebjit` subprocess**, a complete emulated BBC Micro with its own 6502, MOS, and BBC BASIC.
 
@@ -139,7 +139,7 @@ The beebjit-MCP server consists of five modules, each with a distinct responsibi
 flowchart TD
     S[server.py] --> D[driver.py]
     S --> SC[screen.py]
-    S --> P[_png.py]
+    S --> P[image.py]
     D --> K[keyboard.py]
     D --> SC
 ```
@@ -150,7 +150,7 @@ flowchart TD
 | `driver.py` | <ul><li>Owns the lifecycle of one beebjit subprocess and is the only module that talks to it.</li><li>Every MCP tool maps to a driver method. All communication with beebjit goes through `sendCommand`, the primitive that writes a debugger command and reads its response.</li><li>Coordinates with `keyboard.py` for translating host key input and `screen.py` for decoding MODE 7 framebuffers.</li><li>For the API of MCP tools that drive it, see [tool-reference.md](tool-reference.md).</li></ul> |
 | `keyboard.py` | <ul><li>A pure lookup module translating host key input into BBC key events.</li><li>Exposes `asciiToKeys` (assumes CAPS LOCK on, the cold-boot default) and `asciiToKeysRaw` (CAPS LOCK off, uses SHIFT for uppercase).</li><li>Returns `(bbc_key_code, shifted)` pairs that the driver enacts as `keyDown` and `keyUp` events around a HOLD and GAP timing window.</li><li>Per-character mapping and timing rationale in [keypress-timing.md](keypress-timing.md).</li></ul> |
 | `screen.py` | <ul><li>A pure decoder for the BBC's screen framebuffer.</li><li>Currently only MODE 7 is supported.<ul><li>`decodeMode7` produces an array of 25 strings of 40 characters from the 1024-byte teletext page.</li><li>`rotateMode7Page` reorders the page into display order before decoding when the BBC has scrolled, since MODE 7 scrolling moves the CRTC start-address pointer rather than copying memory.</li><li>Decoded text is consumed by [`read_mode7_text`](tool-reference.md#read_mode7_text).</li><li>Teletext control codes and scroll handling in [mode7-decode.md](mode7-decode.md).</li></ul></li></ul> |
-| `_png.py` | <ul><li>A pure stdlib encoder converting BGRA pixel data into PNG bytes.</li><li>Single public function `bgraToPng(bgra, width, height) -> bytes`, used by [`screenshot`](tool-reference.md#screenshot) to package beebjit's rendered framebuffer.</li><li>Implementation uses `zlib` for deflate compression and CRC32 plus `struct` for the PNG chunk headers, with no third-party dependency.</li><li>The leading underscore signals "implementation detail; do not import from outside the package", so a future swap to a different encoder stays a one-module change.</li></ul> |
+| `image.py` | <ul><li>A pure stdlib encoder converting BGRA pixel data into PNG bytes.</li><li>Single public function `bgraToPng(bgra, width, height) -> bytes`, used by [`screenshot`](tool-reference.md#screenshot) to package beebjit's rendered framebuffer and available to direct Python callers via [`bgraToPng`](python-api.md#bgratopng).</li><li>Implementation uses `zlib` for deflate compression and CRC32 plus `struct` for the PNG chunk headers, with no third-party dependency.</li><li>A future swap to a different encoder stays a one-module change because the public surface is the single `bgraToPng` function.</li></ul> |
 
 ## Design considerations
 
