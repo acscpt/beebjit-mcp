@@ -1,8 +1,16 @@
 # Python library worked example
 
-A single end-to-end function that boots a BBC, polls for the BASIC `>` prompt, types and runs a BASIC program that exercises MODE 7 colour and double-height text, decodes the resulting screen, and writes the rendered framebuffer to a PNG on disk.
+The following is a single end-to-end example that does:
 
-The API reference for every method used here is at [python-api.md](python-api.md).
+1. Boots a beebjit emulator instance.
+
+2. Loops waiting for the BASIC `>` prompt for a maximum number of cycles.
+
+3. Types the `PROGRAM` into the emulator and `RUN`s it.
+
+4. Captures the displayed MODE 7 screen.
+
+Refer to the [API referrece](python-api.md) for detailed information on the methods used.
 
 ## The program
 
@@ -75,22 +83,51 @@ The `bgraToPng` output, saved to `outputPng`:
 
 ## How it works
 
-This is the flow a test harness would adopt:
+The function has four phases.
 
-1. Construct a driver via [`fromEnvironment`](python-api.md#fromenvironment).
+### Discovery and lifecycle
 
-2. Poll until a known marker appears with [`mode7TextContains`](python-api.md#mode7textcontains).
+The function opens with `BeebjitDriver.fromEnvironment(model=BeebModel.B) as bbc`. [`fromEnvironment`](python-api.md#fromenvironment) runs the same discovery the MCP server uses, `$BEEBJIT` first then `beebjit` on `$PATH`. The `with` block calls `start` on entry to spawn beebjit and block until the first debugger prompt, and `close` on exit to tear the subprocess down. Both edges cover the exception path, so a `raise` inside the body still releases the subprocess.
 
-3. Type with [`typeText`](python-api.md#typetext) and advance with [`runCycles`](python-api.md#runcycles).
+### Polling for the BASIC prompt
 
-4. Read state with [`captureMode7Bytes`](python-api.md#capturemode7bytes) and [`captureScreen`](python-api.md#capturescreen).
+Construction leaves the BBC at cycle zero with MOS init still ahead. The loop runs the emulator in half-million-cycle chunks and after each chunk checks the MODE 7 page for the BASIC `>` prompt via [`mode7TextContains`](python-api.md#mode7textcontains). The twenty-million-cycle ceiling sits well above what any supported model needs to reach the prompt, so a failure here means something is genuinely wrong, and raising rather than hanging makes that visible immediately.
 
-5. Encode with [`bgraToPng`](python-api.md#bgratopng).
+### Typing and running the program
 
-6. Return decoded rows so the caller can assert on them.
+With the prompt visible, `NEW\n` clears any in-memory program and a one-million-cycle pause gives BASIC time to return to the `>` prompt. The `PROGRAM` constant is then typed verbatim: [`typeText`](python-api.md#typetext) translates each character to a keyboard matrix event with the right SHIFT handling for the punctuation in the BASIC source. `RUN\n` starts execution, and the fifteen-million-cycle settle is the budget the program has to print everything and return.
 
-The context manager guarantees teardown including the exception path, so a failed `assert` does not leak a beebjit subprocess.
+### Capturing the screen
 
-## On the BASIC
+[`captureMode7Bytes`](python-api.md#capturemode7bytes) reads the teletext page in display order (see [Scroll](#scroll) below for what that means). [`decodeMode7`](python-api.md#decodemode7) turns those bytes into 25 strings of 40 characters, with non-printable bytes rendered as spaces by default. [`captureScreen`](python-api.md#capturescreen) reads beebjit's rendered framebuffer in 32-bit BGRA together with its width and height, and [`bgraToPng`](python-api.md#bgratopng) packages those bytes into a PNG that any viewer understands.
 
-The teletext control bytes (`CHR$(129)` and friends) take one column on screen, which is why each rainbow letter is preceded by a space. `CHR$(141)` is double-height, and the BBC convention of printing a double-height line twice (once for the top half, once for the bottom) is what makes the title render fully.
+## Scroll
+
+BBC MODE 7 uses hardware scroll. When the BBC needs another line below row 24, the CRTC start-address pointer at `&0350`/`&0351` is advanced rather than memory being copied. The 1024-byte page at `&7C00` still holds the data, just rotated. [`captureMode7Bytes`](python-api.md#capturemode7bytes) handles this transparently: it reads the start-address pointer and rotates the page back into display order before returning, so what the caller sees matches what is on the screen. Reach for [`readMemory`](python-api.md#readmemory)`(0x7C00, 1000)` only to read the raw, physical-order bytes.
+
+This worked example never scrolls because the program prints around eight lines total. Longer-running output does scroll, and the physical bytes diverge from what is on the screen:
+
+```text
+After seven PRINT statements onto a five-row screen:
+
+Display order              Physical memory at &7C00
+(captureMode7Bytes)        (readMemory)
+
+  C                          F
+  D                          G
+  E                          C
+  F                          D
+  G                          E
+```
+
+The two newest lines (F, G) overwrote the top of the page; the older C, D, E still sit lower down. A caller that decodes raw memory reads F, G, C, D, E top to bottom, not the correct C, D, E, F, G.
+
+## Common pitfalls
+
+- **The BASIC prompt never arrives.** The poll loop raises `RuntimeError` after twenty million cycles. The default is comfortable for every supported model on a normal host. Raise the budget if a heavily loaded host or a slower model occasionally times out.
+
+- **The program never finishes.** Some BBC BASIC programs loop forever or block on input. The fifteen-million-cycle settle is generous for programs that print and return to the `>` prompt; raise it for programs that do meaningful work, or replace the fixed settle with a [`mode7TextContains`](python-api.md#mode7textcontains) poll on a known marker the program prints near the end.
+
+- **Cycle budgets are BBC time, not wall time.** The BBC runs at a nominal 2 MHz, so one million BBC cycles is half a second on the real hardware. beebjit under the default `-fast` configuration runs much quicker than real time, but the BBC's perceived time is what governs the budget. Five seconds of BBC time (ten million cycles) is comfortable for short BASIC programs.
+
+- **Forgetting the context manager.** Without `with`, a missing or failing `close` leaves a beebjit subprocess running. The `-cycles` cap, one trillion by default, eventually takes it down, but that can be hours away.
