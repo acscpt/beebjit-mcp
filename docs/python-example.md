@@ -99,28 +99,7 @@ With the prompt visible, `NEW\n` clears any in-memory program and a one-million-
 
 ### Capturing the screen
 
-[`captureMode7Bytes`](python-api.md#capturemode7bytes) reads the teletext page in display order (see [Scroll](#scroll) below for what that means). [`decodeMode7`](python-api.md#decodemode7) turns those bytes into 25 strings of 40 characters, with non-printable bytes rendered as spaces by default. [`captureScreen`](python-api.md#capturescreen) reads beebjit's rendered framebuffer in 32-bit BGRA together with its width and height, and [`bgraToPng`](python-api.md#bgratopng) packages those bytes into a PNG that any viewer understands.
-
-## Scroll
-
-BBC MODE 7 uses hardware scroll. When the BBC needs another line below row 24, the CRTC start-address pointer at `&0350`/`&0351` is advanced rather than memory being copied. The 1024-byte page at `&7C00` still holds the data, just rotated. [`captureMode7Bytes`](python-api.md#capturemode7bytes) handles this transparently: it reads the start-address pointer and rotates the page back into display order before returning, so what the caller sees matches what is on the screen. Reach for [`readMemory`](python-api.md#readmemory)`(0x7C00, 1000)` only to read the raw, physical-order bytes.
-
-This worked example never scrolls because the program prints around eight lines total. Longer-running output does scroll, and the physical bytes diverge from what is on the screen:
-
-```text
-After seven PRINT statements onto a five-row screen:
-
-Display order              Physical memory at &7C00
-(captureMode7Bytes)        (readMemory)
-
-  C                          F
-  D                          G
-  E                          C
-  F                          D
-  G                          E
-```
-
-The two newest lines (F, G) overwrote the top of the page; the older C, D, E still sit lower down. A caller that decodes raw memory reads F, G, C, D, E top to bottom, not the correct C, D, E, F, G.
+[`captureMode7Bytes`](python-api.md#capturemode7bytes) reads the teletext page in display order. [`decodeMode7`](python-api.md#decodemode7) turns those bytes into 25 strings of 40 characters, with non-printable bytes rendered as spaces by default. [`captureScreen`](python-api.md#capturescreen) reads beebjit's rendered framebuffer in 32-bit BGRA together with its width and height, and [`bgraToPng`](python-api.md#bgratopng) packages those bytes into a PNG that any viewer understands.
 
 ## Common pitfalls
 
@@ -131,3 +110,5 @@ The two newest lines (F, G) overwrote the top of the page; the older C, D, E sti
 - **Cycle budgets are BBC time, not wall time.** The BBC runs at a nominal 2 MHz, so one million BBC cycles is half a second on the real hardware. beebjit under the default `-fast` configuration runs much quicker than real time, but the BBC's perceived time is what governs the budget. Five seconds of BBC time (ten million cycles) is comfortable for short BASIC programs.
 
 - **Forgetting the context manager.** Without `with`, a missing or failing `close` leaves a beebjit subprocess running. The `-cycles` cap, one trillion by default, eventually takes it down, but that can be hours away.
+
+- **Captured text out of sequence.** Once output runs past row 24, the BBC scrolls in hardware: the CRTC start-address pointer at `&0350`/`&0351` advances and the 1024-byte page at `&7C00` rotates rather than memory being copied. `captureMode7Bytes` reads the pointer and returns the page in display order. `readMemory(0x7C00, 1000)` returns physical-order bytes, which look out of sequence after any scroll. [mode7-decode.md](mode7-decode.md) has the full mechanism.

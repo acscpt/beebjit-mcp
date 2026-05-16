@@ -76,28 +76,7 @@ With the prompt visible, [`type_input`](tool-reference.md#type_input)`("NEW\n")`
 
 ### Capturing the screen
 
-[`read_mode7_text`](tool-reference.md#read_mode7_text) reads the teletext page in display order (see [Scroll](#scroll) below for what that means) and returns 25 strings of 40 characters together with a newline-joined single string. [`screenshot`](tool-reference.md#screenshot) does a parallel read of beebjit's rendered framebuffer and returns it as a base64-encoded PNG with width and height attached.
-
-## Scroll
-
-BBC MODE 7 uses hardware scroll. When the BBC needs another line below row 24, the CRTC start-address pointer at `&0350`/`&0351` is advanced rather than memory being copied. The 1024-byte page at `&7C00` still holds the data, just rotated. [`read_mode7_text`](tool-reference.md#read_mode7_text) handles this transparently: it reads the start-address pointer and rotates the page back into display order before returning, so what the caller sees matches what is on the screen. Reach for [`read_memory`](tool-reference.md#read_memory)`(addr=0x7C00, length=1000)` only to read the raw, physical-order bytes.
-
-This worked example never scrolls because the program prints four lines total. Longer-running output does scroll, and the physical bytes diverge from what is on the screen:
-
-```text
-After seven PRINT statements onto a five-row screen:
-
-Display order              Physical memory at &7C00
-(read_mode7_text)          (read_memory)
-
-  C                          F
-  D                          G
-  E                          C
-  F                          D
-  G                          E
-```
-
-The two newest lines (F, G) overwrote the top of the page; the older C, D, E still sit lower down. A caller that decodes raw memory reads F, G, C, D, E top to bottom, not the correct C, D, E, F, G.
+[`read_mode7_text`](tool-reference.md#read_mode7_text) reads the teletext page in display order and returns 25 strings of 40 characters together with a newline-joined single string. [`screenshot`](tool-reference.md#screenshot) does a parallel read of beebjit's rendered framebuffer and returns it as a base64-encoded PNG with width and height attached.
 
 ## Common pitfalls
 
@@ -108,6 +87,8 @@ The two newest lines (F, G) overwrote the top of the page; the older C, D, E sti
 - **Cycle budgets are BBC time, not wall time.** The BBC runs at a nominal 2 MHz, so one million BBC cycles is half a second on the real hardware. beebjit under the default `-fast` configuration runs much quicker than real time, but the BBC's perceived time is what governs the budget. Five seconds of BBC time (ten million cycles) is comfortable for short BASIC programs.
 
 - **Leaving the session behind.** A session without a matching `destroy_machine` keeps its beebjit subprocess running until the client disconnects or the `-cycles` cap takes it down. In a stateless agent flow this is rarely an issue, but scripted callers should pair every `create_machine` with `destroy_machine`.
+
+- **Captured text out of sequence.** Once output runs past row 24, the BBC scrolls in hardware: the CRTC start-address pointer at `&0350`/`&0351` advances and the 1024-byte page at `&7C00` rotates rather than memory being copied. `read_mode7_text` reads the pointer and returns rows in display order. `read_memory(addr=0x7C00, length=1000)` returns physical-order bytes, which look out of sequence after any scroll. [mode7-decode.md](mode7-decode.md) has the full mechanism.
 
 ## Composition shortcut
 

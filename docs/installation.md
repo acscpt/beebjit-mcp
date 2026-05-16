@@ -1,6 +1,12 @@
 # Installation guide
 
-beebjit-MCP runs as an MCP server that your MCP client (Claude Desktop, Claude Code, Cursor, and so on) spawns over stdio. Once installed and wired up, the client can call tools like `create_machine`, `type_input`, and `run_basic` to drive a live BBC Micro session.
+beebjit-MCP runs as an MCP server that an MCP client (Claude Desktop, Claude Code, Cursor, and so on) can communicate with. 
+
+A Python library is also provided for those that want to drive beebjit directly using a Python API.  
+
+Both use cases share the same driver and the same beebjit subprocess underneath. 
+
+Once installed and wired up, the client (or the library) can call tools like `create_machine`, `type_input`, and `run_basic` to drive a live BBC Micro session.
 
 The steps to get there are:
 
@@ -182,6 +188,12 @@ The table below links to setup docs for other common MCP clients.
 | Zed | `~/.zed/settings.json` (and OS variants) | top-level key is `context_servers`; `command` is a nested object | [zed.dev](https://zed.dev/docs/ai/mcp) |
 
 Any other MCP client that speaks stdio JSON-RPC accepts the same idea with its own location. Consult the client's documentation.
+
+## Use as a Python library
+
+To use as a stand-alone Python library import the same package that the MCP server dos, namely `beebjit_mcp`.
+
+See the [Python API](python-api.md) guide for a per-method reference and an example [Python](python-example.md) for an end-to-end walkthrough.
 
 ## Verify
 
