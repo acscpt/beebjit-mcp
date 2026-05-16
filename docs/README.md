@@ -10,6 +10,10 @@ The new reader is directed towards the [Quickstart](quickstart.md) guide. The ot
 
 - [Tool reference](tool-reference.md) - every MCP tool the server exposes, with parameter shape, return shape, and when to reach for it.
 
+- [Python API](python-api.md) - the same operations as a Python library, for in-process callers who do not need MCP/JSON-RPC framing.
+
+- [Python worked example](python-example.md) - one annotated end-to-end function that boots a BBC, runs a coloured MODE 7 BASIC program, decodes the screen, and writes a PNG of the result.
+
 - [Troubleshooting](troubleshooting.md) - common failures, their likely causes, and the fix.
 
 ## Internals

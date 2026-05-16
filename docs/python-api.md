@@ -64,6 +64,12 @@ The `with` block guarantees teardown. The five-million-cycle wait gives the MOS 
 
 - This documentation uses `&ADDR` for BBC memory addresses, matching the BBC Micro User Guide. Source code uses `0x`.
 
+## Worked example
+
+A complete end-to-end function that boots a BBC, runs a coloured MODE 7 BASIC program, and writes a PNG of the result lives at [python-example.md](python-example.md).
+
+[![Worked example output: yellow double-height BEEBJIT-MCP, the word COLOURS with each letter in a different MODE 7 colour, seven colour bands of BBC, and a white BBC MICRO MODEL B line](images/python-api-worked-example.png)](python-example.md)
+
 ## Index
 
 | Method | Category | Purpose |
