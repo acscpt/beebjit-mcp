@@ -168,9 +168,20 @@ Edit `claude_desktop_config.json`:
 
 Restart Claude Desktop after editing.
 
-### Other clients
+### Other MCP clients
 
-Any MCP client that speaks stdio JSON-RPC accepts the same `mcpServers` entry format with its own config location. Consult the client's documentation for where the config file lives.
+The Claude examples above are the worked reference. Every MCP client takes the same idea (a stdio command plus environment variables) and writes it to a JSON or YAML file in a client-specific location, sometimes under a different top-level key. The table below names the file and the schema quirk for each, and links to the client's own MCP docs.
+
+| Client | Config location | Schema quirk | Docs |
+| --- | --- | --- | --- |
+| Cline (VS Code extension) | Cline MCP UI panel | `mcpServers` plus `disabled` and `autoApprove` fields | [docs.cline.bot](https://docs.cline.bot/mcp/configuring-mcp-servers) |
+| Continue.dev | `.continue/mcpServers/*.yaml` | YAML, one server per file | [docs.continue.dev](https://docs.continue.dev/customize/deep-dives/mcp) |
+| Cursor | `~/.cursor/mcp.json` or `.cursor/mcp.json` | adds explicit `"type": "stdio"` | [cursor.com](https://cursor.com/docs/context/mcp) |
+| VS Code | `.vscode/mcp.json` | top-level key is `servers`, not `mcpServers` | [code.visualstudio.com](https://code.visualstudio.com/docs/copilot/chat/mcp-servers) |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | none, matches the standard entry above | [docs.windsurf.com](https://docs.windsurf.com/windsurf/cascade/mcp) |
+| Zed | `~/.zed/settings.json` (and OS variants) | top-level key is `context_servers`; `command` is a nested object | [zed.dev](https://zed.dev/docs/ai/mcp) |
+
+Any other MCP client that speaks stdio JSON-RPC accepts the same idea with its own location. Consult the client's documentation.
 
 ## Verify
 
