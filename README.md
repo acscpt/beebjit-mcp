@@ -1,6 +1,9 @@
 # beebjit-MCP
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Tests](https://github.com/acscpt/beebjit-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/acscpt/beebjit-mcp/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/acscpt/beebjit-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/acscpt/beebjit-mcp)
 
 beebjit-MCP is a Python-based [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/getting-started/intro) server that lets an AI application instantiate, connect to, drive, capture output from, and interrogate a real [BBC Micro](https://en.wikipedia.org/wiki/BBC_Micro) emulator.
 
