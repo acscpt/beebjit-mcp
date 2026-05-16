@@ -68,6 +68,8 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - **`BeebjitDriver.fromEnvironment`**: classmethod that locates the beebjit binary via `$BEEBJIT` or `beebjit` on `$PATH`, then constructs a driver. The Quickstart now opens with `with BeebjitDriver.fromEnvironment() as bbc:`. The underlying `discoverBinary()` is also public on the `beebjit_mcp.driver` module for callers that want the path without a driver.
 
+- **Top-level re-exports**: `BeebjitDriver`, `BeebjitError`, and `BeebModel` are now importable directly from `beebjit_mcp`, so `from beebjit_mcp import BeebjitDriver` works alongside the submodule path. Helpers (`asciiToKeys`, `decodeMode7`, `bgraToPng`, and friends) stay in their submodules.
+
 ### Fixed
 
 - **`runCycles` no longer hangs after a soft reset.** Previously, `runCycles` anchored its `breakat` target against the 6502-relative `cycles=` field from `r`. That counter rebases near zero on every BBC Break, while `breakat` matches against the global `total_timer_ticks`. Post-Break, the computed target landed in the past relative to ticks, beebjit silently dropped the breakpoint as a no-op, and the subsequent `c` ran with no break condition and never returned. `runCycles` now reads ticks directly via `eval ticks`, so calls work correctly across any number of resets. Empirically confirmed by re-running the original probe across all five chunk shapes and four conditions, all clean.

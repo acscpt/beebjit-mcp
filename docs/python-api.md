@@ -22,20 +22,22 @@ The two are not exclusive. Both can run against the same project; each beebjit s
 
 ## Installation
 
-The library ships in the `beebjit-mcp` package. There is no separate install.
+The library requires Python 3.10 or later and ships in the `beebjit-mcp` package. There is no separate install.
 
 ```bash
 pip install beebjit-mcp
 ```
 
-The beebjit binary is still required, since the library spawns it as a subprocess. The [installation guide](installation.md) covers binary install and the `$BEEBJIT` environment variable that the library uses to find it.
+A beebjit binary is required at runtime, since the library spawns it as a subprocess. The [installation guide](installation.md) covers binary install.
+
+For binary discovery, [`BeebjitDriver.fromEnvironment`](#fromenvironment) looks at `$BEEBJIT` first then `beebjit` on `$PATH`. To pin a specific binary, pass the path to the [`BeebjitDriver`](#beebjitdriver) constructor directly.
 
 ## Quickstart
 
 A complete session that boots a BBC B, types a one-line BASIC program, runs it, and reads the screen back:
 
 ```python
-from beebjit_mcp.driver import BeebjitDriver, BeebModel
+from beebjit_mcp import BeebjitDriver, BeebModel
 from beebjit_mcp.screen import decodeMode7
 
 with BeebjitDriver.fromEnvironment(model=BeebModel.B) as bbc:
@@ -63,6 +65,8 @@ The `with` block guarantees teardown. The five-million-cycle wait gives the MOS 
 - One driver instance owns one beebjit subprocess. Methods on a single driver are not safe to call from multiple threads concurrently. See [Concurrency](#concurrency).
 
 - This documentation uses `&ADDR` for BBC memory addresses, matching the BBC Micro User Guide. Source code uses `0x`.
+
+- `BeebjitDriver`, `BeebjitError`, and `BeebModel` are re-exported at the top of the package. `from beebjit_mcp import BeebjitDriver` and `from beebjit_mcp.driver import BeebjitDriver` both work. Helpers live in their submodules (`beebjit_mcp.keyboard`, `beebjit_mcp.screen`, `beebjit_mcp.image`).
 
 ## Worked example
 
@@ -139,7 +143,7 @@ A configured `BeebjitDriver` instance. No subprocess is running yet.
 ```python
 import os
 from pathlib import Path
-from beebjit_mcp.driver import BeebjitDriver, BeebModel
+from beebjit_mcp import BeebjitDriver, BeebModel
 
 bbc = BeebjitDriver(
     Path(os.environ["BEEBJIT"]),
@@ -179,7 +183,7 @@ A configured `BeebjitDriver`, ready for [`start`](#start) or use as a context ma
 **Example**
 
 ```python
-from beebjit_mcp.driver import BeebjitDriver, BeebModel
+from beebjit_mcp import BeebjitDriver, BeebModel
 
 with BeebjitDriver.fromEnvironment(model=BeebModel.B) as bbc:
     bbc.runCycles(5_000_000)
@@ -855,7 +859,7 @@ The driver itself is built on top of `sendCommand`; nothing else has a hotline t
 `BeebjitError` is the single exception class for anything the driver cannot complete. Pipe-level failures (broken pipe, unexpected EOF), protocol-level failures (unparseable register or memory output), and command-level failures (the debugger rejecting an argument) all surface as `BeebjitError`. The message always includes the stderr tail when available, so a caught exception carries enough context for post-mortem on its own.
 
 ```python
-from beebjit_mcp.driver import BeebjitError
+from beebjit_mcp import BeebjitError
 
 try:
     bbc.loadDisc(0, "/path/that/does/not/exist.ssd")

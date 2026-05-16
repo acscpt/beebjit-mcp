@@ -17,7 +17,7 @@ Refer to the [API referrece](python-api.md) for detailed information on the meth
 ```python
 from pathlib import Path
 
-from beebjit_mcp.driver import BeebjitDriver, BeebModel
+from beebjit_mcp import BeebjitDriver, BeebModel
 from beebjit_mcp.screen import decodeMode7, mode7TextContains
 from beebjit_mcp.image import bgraToPng
 
