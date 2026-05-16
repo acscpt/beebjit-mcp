@@ -22,8 +22,7 @@ Binary discovery order:
 2. `beebjit` on `$PATH` (via `shutil.which`)
 3. hard error with a clear message pointing at install docs
 
-No auto-download, no bundling: the user installs beebjit themselves
-(licence-motivated -- see docs/architecture.md).
+No auto-download.
 """
 
 from __future__ import annotations
@@ -109,7 +108,10 @@ def _resolveKey(key: str | int) -> int:
 
 @mcp.tool()
 def create_machine(model: str = "b", disc: str | None = None) -> dict[str, str]:
-    """Boot a BBC Micro session. Returns a `session_id` for subsequent tools.
+    """Boot a BBC Micro session. Returns `{"session_id": "..."}`.
+
+    The returned `session_id` is required by every subsequent
+    tool that operates on this BBC.
 
     `model` selects the BBC variant. Accepted values are `b` (BBC B,
     default), `master` (Master 128 with MOS 3.20), `mos35` (Master 128
@@ -274,7 +276,8 @@ def reset(
     Equivalent to a user pressing BREAK on the real keyboard.
     With `autoboot=True`, holds SHIFT across the BREAK so an
     inserted disc's `!BOOT` runs after reset (the BBC equivalent
-    of SHIFT+BREAK).
+    of SHIFT+BREAK). The `session_id` stays valid; subsequent
+    tool calls hit the same session.
     """
 
     drv = _getDriver(session_id)
@@ -319,7 +322,7 @@ def run_until_prompt(
     anchoring the match to the beginning of a row: a bare `>`
     mid-line (e.g. inside the typed command itself) does not
     count. Defaults to `">"` which is the standard BBC BASIC
-    prompt.
+    prompt. Returns `{"ok", "found", "cycles_ran", "prompt"}`.
     """
 
     drv = _getDriver(session_id)
@@ -359,12 +362,17 @@ def run_until_text(
     max_cycles: int = 20_000_000,
     chunk_cycles: int = 500_000,
 ) -> dict[str, object]:
-    """Run in chunks until `needle` appears in the MODE 7 screen.
+    """Run in chunks until `needle` appears anywhere in the MODE 7 screen.
 
-    Returns early as soon as the text is found. Returns with
-    `found=False` if `max_cycles` elapsed without a match. The
-    chunk size trades responsiveness (shorter = checks more
-    often) against overhead (shorter = more memory reads).
+    Substring match across the entire decoded screen, joined with
+    newlines, so the match is not row-anchored. Use
+    `run_until_prompt` when the marker must sit at the start of a
+    row (the BASIC `>` prompt typically does). Returns early as
+    soon as the text is found, or with `found=False` once
+    `max_cycles` has elapsed without a match. The chunk size
+    trades responsiveness (shorter = checks more often) against
+    overhead (shorter = more memory reads). Returns
+    `{"ok", "found", "cycles_ran"}`.
     """
 
     drv = _getDriver(session_id)
@@ -404,9 +412,12 @@ def type_input(session_id: str, text: str) -> dict[str, object]:
     """Type an ASCII string into the BBC keyboard.
 
     Uses the default keypress timings (HOLD=5M, GAP=5M BBC
-    cycles). Use `\\n` to submit a line. Raises via the underlying
+    cycles). Use `\\n` to submit a line. Lowercase letters arrive
+    as uppercase under the cold-boot CAPS LOCK ON default; use
+    `type_input_raw` (after `set_caps_lock(session_id, False)`)
+    when case must be preserved. Raises via the underlying
     `UnsupportedCharError` if the string contains a character with
-    no BBC matrix mapping.
+    no BBC matrix mapping. Returns `{"ok": True, "chars": N}`.
     """
 
     drv = _getDriver(session_id)
@@ -505,9 +516,9 @@ def press_caps_lock(session_id: str) -> dict[str, object]:
     """Tap CAPS LOCK once to toggle the current state.
 
     A pure toggle: the tool does not know or care about the
-    pre-tap state. Use `set_caps_lock(on)` if you need a
-    deterministic final state; that tool reads the MOS caps-lock
-    flag and presses only if needed.
+    pre-tap state. Use `set_caps_lock(session_id, on)` if you
+    need a deterministic final state; that tool reads the MOS
+    caps-lock flag and presses only if needed.
     """
 
     drv = _getDriver(session_id)
@@ -637,7 +648,13 @@ def disassemble(
 
 @mcp.tool()
 def read_registers(session_id: str) -> dict[str, object]:
-    """Return 6502 register state: A, X, Y, S, F (flag string), PC, cycles."""
+    """Return 6502 register state.
+
+    Returns a dict with keys `A`, `X`, `Y`, `S`, `PC`, `cycles`
+    as integers, and `F` as an 8-character flag string from
+    beebjit's debugger (each flag position shows an upper-case
+    letter when set, a space otherwise).
+    """
 
     drv = _getDriver(session_id)
 
