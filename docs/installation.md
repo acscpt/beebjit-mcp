@@ -170,7 +170,7 @@ Restart Claude Desktop after editing.
 
 ### Other MCP clients
 
-The Claude examples above are the worked reference. Every MCP client takes the same idea (a stdio command plus environment variables) and writes it to a JSON or YAML file in a client-specific location, sometimes under a different top-level key. The table below names the file and the schema quirk for each, and links to the client's own MCP docs.
+The table below links to setup docs for other common MCP clients.
 
 | Client | Config location | Schema quirk | Docs |
 | --- | --- | --- | --- |
