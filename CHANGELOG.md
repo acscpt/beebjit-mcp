@@ -66,6 +66,8 @@ This project is pre-alpha. The tool surface, return shapes, and defaults may cha
 
 - **Public Python library**: `beebjit-mcp` is now a documented Python library alongside the MCP server. Direct in-process callers can `from beebjit_mcp.driver import BeebjitDriver` (plus the `keyboard`, `screen`, and `image` submodules) and drive a BBC without going through stdio JSON-RPC. `docs/python-api.md` is the per-method reference; `BeebjitDriver`, `BeebjitError`, `BeebModel`, the lifecycle/input/state methods, plus `asciiToKeys`, `asciiToKeysRaw`, `resolveKeyName`, `decodeMode7`, `rotateMode7Page`, `mode7TextContains`, and `bgraToPng` are the supported surface.
 
+- **`BeebjitDriver.fromEnvironment`**: classmethod that locates the beebjit binary via `$BEEBJIT` or `beebjit` on `$PATH`, then constructs a driver. The Quickstart now opens with `with BeebjitDriver.fromEnvironment() as bbc:`. The underlying `discoverBinary()` is also public on the `beebjit_mcp.driver` module for callers that want the path without a driver.
+
 ### Fixed
 
 - **`runCycles` no longer hangs after a soft reset.** Previously, `runCycles` anchored its `breakat` target against the 6502-relative `cycles=` field from `r`. That counter rebases near zero on every BBC Break, while `breakat` matches against the global `total_timer_ticks`. Post-Break, the computed target landed in the past relative to ticks, beebjit silently dropped the breakpoint as a no-op, and the subsequent `c` ran with no break condition and never returned. `runCycles` now reads ticks directly via `eval ticks`, so calls work correctly across any number of resets. Empirically confirmed by re-running the original probe across all five chunk shapes and four conditions, all clean.

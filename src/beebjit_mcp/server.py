@@ -31,7 +31,6 @@ from __future__ import annotations
 import base64
 import importlib
 import os
-import shutil
 import sys
 import uuid
 from pathlib import Path
@@ -39,7 +38,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 from beebjit_mcp.image import bgraToPng
-from beebjit_mcp.driver import BeebjitDriver
+from beebjit_mcp.driver import BeebjitDriver, discoverBinary
 from beebjit_mcp.keyboard import BBC_KEY_CAPS_LOCK, resolveKeyName
 from beebjit_mcp.screen import Mode7Controls, decodeMode7
 
@@ -62,41 +61,6 @@ _sessions: dict[str, BeebjitDriver] = {}
 # -----------------------------------------------------------------------
 # Internal helpers
 # -----------------------------------------------------------------------
-
-def _discoverBinary() -> Path:
-    """Locate the beebjit binary by env var or `$PATH`.
-
-    Raises `FileNotFoundError` with a clear message if nothing is
-    found; the error message is what the user sees on a fresh
-    install and needs to point at the install docs.
-    """
-
-    # Env var takes priority: lets a user force a specific build
-    # (e.g. the fork on `test-integration`) without polluting PATH.
-    env = os.environ.get("BEEBJIT")
-
-    if env:
-        path = Path(env)
-
-        # Exist-and-executable check here so a stale env var gives
-        # a useful message rather than deferring to the subprocess.
-        if path.is_file() and os.access(path, os.X_OK):
-            return path
-
-        raise FileNotFoundError(
-            f"$BEEBJIT points at {env!r} which is not an executable file"
-        )
-
-    # Fall back to $PATH. `shutil.which` handles the platform-specific
-    # extension lookup (Windows `.exe`) should we ever support it.
-    which = shutil.which("beebjit")
-    if which is not None:
-        return Path(which)
-
-    raise FileNotFoundError(
-        "beebjit binary not found. Set $BEEBJIT or put beebjit on $PATH."
-    )
-
 
 def _getDriver(sessionId: str) -> BeebjitDriver:
     """Look up a driver by session id. Raises KeyError if unknown.
@@ -163,7 +127,7 @@ def create_machine(model: str = "b", disc: str | None = None) -> dict[str, str]:
 
     # Resolve the binary first so the user sees a useful error at
     # session start, not later when a tool fails mid-run.
-    binary = _discoverBinary()
+    binary = discoverBinary()
 
     # Validate the disc path Python-side before spawning, so a typo
     # fails fast with a clean error rather than after subprocess setup.

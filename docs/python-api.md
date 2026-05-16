@@ -35,13 +35,10 @@ The beebjit binary is still required, since the library spawns it as a subproces
 A complete session that boots a BBC B, types a one-line BASIC program, runs it, and reads the screen back:
 
 ```python
-import os
-from pathlib import Path
-
 from beebjit_mcp.driver import BeebjitDriver, BeebModel
 from beebjit_mcp.screen import decodeMode7
 
-with BeebjitDriver(Path(os.environ["BEEBJIT"]), model=BeebModel.B) as bbc:
+with BeebjitDriver.fromEnvironment(model=BeebModel.B) as bbc:
     bbc.runCycles(5_000_000)
     bbc.typeText('PRINT "HELLO"\n')
     bbc.runCycles(2_000_000)
@@ -50,6 +47,8 @@ with BeebjitDriver(Path(os.environ["BEEBJIT"]), model=BeebModel.B) as bbc:
     for row in decodeMode7(page):
         print(row)
 ```
+
+`fromEnvironment` locates the beebjit binary from `$BEEBJIT` first and then `beebjit` on `$PATH`, mirroring the discovery the MCP server uses. To pin a specific binary in code, pass the path directly: `BeebjitDriver("/path/to/beebjit", model=BeebModel.B)`.
 
 The `with` block guarantees teardown. The five-million-cycle wait gives the MOS time to finish booting and land at the BASIC `>` prompt before the first keypress arrives. `typeText` resolves each character to a matrix key event with the right SHIFT handling. `captureMode7Bytes` grabs the teletext framebuffer page; `decodeMode7` turns those bytes into 25 rows of 40 characters.
 
@@ -70,6 +69,7 @@ The `with` block guarantees teardown. The five-million-cycle wait gives the MOS 
 | Method | Category | Purpose |
 | --- | --- | --- |
 | [`BeebjitDriver(...)`](#beebjitdriver) | Lifecycle | Configure a driver for a BBC session |
+| [`BeebjitDriver.fromEnvironment`](#fromenvironment) | Lifecycle | Auto-discover the binary and construct a driver |
 | [`start`](#start) | Lifecycle | Spawn the beebjit subprocess |
 | [`close`](#close) | Lifecycle | Tear the subprocess down |
 | [`reset`](#reset) | Lifecycle | Hard-reset the BBC, optionally SHIFT+BREAK autoboot |
@@ -108,7 +108,7 @@ Configure a driver for a BBC session. The constructor does not spawn beebjit; [`
 
 **Parameters**
 
-- `binaryPath` *(Path)*: Path to the beebjit executable. The library does not auto-discover. The conventional pattern is `Path(os.environ["BEEBJIT"])`.
+- `binaryPath` *(Path)*: Path to the beebjit executable. For automatic discovery from `$BEEBJIT` or `$PATH`, use [`fromEnvironment`](#fromenvironment) instead.
 
 - `model` *(str | BeebModel, default `BeebModel.B`)*: BBC hardware configuration. Either a `BeebModel` member or its wire string. The four values are:
   - `BeebModel.B` (`"b"`): BBC B with MOS 1.20 and the 8271 floppy controller.
@@ -145,6 +145,45 @@ bbc = BeebjitDriver(
 **Notes**
 
 The constructor is cheap. The expensive work is in [`start`](#start), which spawns beebjit and blocks until the first debugger prompt. Use the context manager unless manual lifecycle is unavoidable.
+
+[^ Index](#index)
+
+---
+
+### `fromEnvironment`
+
+Construct a driver after locating the beebjit binary automatically. Classmethod alternative to the explicit-path constructor.
+
+**Parameters**
+
+- `model` *(str | BeebModel, default `BeebModel.B`)*: BBC hardware configuration. Same shape as the constructor; see [`BeebjitDriver`](#beebjitdriver) for the four values.
+
+- `cycles` *(int, default `10**12`)*: beebjit `-cycles` cap. Same meaning as the constructor.
+
+**Returns**
+
+A configured `BeebjitDriver`, ready for [`start`](#start) or use as a context manager.
+
+**Errors**
+
+- `FileNotFoundError` if neither `$BEEBJIT` nor `beebjit` on `$PATH` resolves to an executable file.
+
+- `ValueError` if `model` is neither a `BeebModel` member nor a recognised wire string.
+
+**Example**
+
+```python
+from beebjit_mcp.driver import BeebjitDriver, BeebModel
+
+with BeebjitDriver.fromEnvironment(model=BeebModel.B) as bbc:
+    bbc.runCycles(5_000_000)
+```
+
+**Notes**
+
+Discovery order: `$BEEBJIT` first, then `beebjit` on `$PATH`. Matches the discovery the MCP server runs at startup.
+
+For callers that need the path without constructing a driver, the underlying `discoverBinary()` function is also available: `from beebjit_mcp.driver import discoverBinary`.
 
 [^ Index](#index)
 

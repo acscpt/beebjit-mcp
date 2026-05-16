@@ -1,12 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Heisenberg (acscpt)
 # SPDX-License-Identifier: MIT
 
-"""Unit tests for `server.py` helpers that do not need a BBC session.
-
-Everything here exercises pure logic (`_resolveKey`, `_discoverBinary`
-error paths, etc.). The integration tests in `test_hello.py` and
-`test_server_minimal.py` cover the wire-format round trips.
-"""
+"""Unit tests for pure helpers in `server.py`."""
 
 from __future__ import annotations
 

@@ -239,6 +239,37 @@ _MODEL_ARGV: dict[BeebModel, tuple[str, ...]] = {
 
 
 # -----------------------------------------------------------------------
+# Binary discovery
+# -----------------------------------------------------------------------
+
+def discoverBinary() -> Path:
+    """Locate the beebjit binary by env var or `$PATH`.
+
+    Order: `$BEEBJIT` first, then `beebjit` on `$PATH` via
+    `shutil.which`. Raises `FileNotFoundError` with a message that
+    points at the install docs when neither resolves.
+    """
+
+    env = os.environ.get("BEEBJIT")
+
+    if env:
+        path = Path(env)
+        if path.is_file() and os.access(path, os.X_OK):
+            return path
+        raise FileNotFoundError(
+            f"$BEEBJIT points at {env!r} which is not an executable file"
+        )
+
+    which = shutil.which("beebjit")
+    if which is not None:
+        return Path(which)
+
+    raise FileNotFoundError(
+        "beebjit binary not found. Set $BEEBJIT or put beebjit on $PATH."
+    )
+
+
+# -----------------------------------------------------------------------
 # Driver
 # -----------------------------------------------------------------------
 
@@ -331,6 +362,21 @@ class BeebjitDriver:
         # `close()`. Optional so the configured-but-not-started state
         # stays valid.
         self._tempDir: Path | None = None
+
+    @classmethod
+    def fromEnvironment(
+        cls,
+        model: str | BeebModel = BeebModel.B,
+        cycles: int = 10**12,
+    ) -> "BeebjitDriver":
+        """Construct a driver, locating the beebjit binary automatically.
+
+        Discovery uses `discoverBinary()`: `$BEEBJIT` first, then
+        `beebjit` on `$PATH`. Raises `FileNotFoundError` if neither
+        resolves.
+        """
+
+        return cls(discoverBinary(), model=model, cycles=cycles)
 
     # -----------------------------------------------------------------
     # Lifecycle
