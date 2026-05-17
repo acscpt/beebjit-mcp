@@ -80,10 +80,8 @@ def testInProcessLifecycleCoversToolSurface(
         assert "found" in prompt
 
         shot = server.screenshot(sessionId)
-        png = base64.b64decode(shot["bytes"])
+        png = base64.b64decode(shot.to_image_content().data)
         assert png.startswith(_PNG_SIG)
-        assert shot["width"] > 0 and shot["height"] > 0
-        assert shot["format"] == "png"
 
         basic = server.run_basic(
             sessionId,

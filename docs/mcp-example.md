@@ -48,13 +48,13 @@ The agent decomposes that into a sequence of MCP tool calls.
 
 8. **`read_mode7_text`**. Decodes the MODE 7 page into 25 strings of 40 characters, returned alongside a newline-joined single string.
 
-9. **`screenshot`**. Captures the rendered framebuffer as a base64-encoded PNG with width and height attached.
+9. **`screenshot`**. Captures the rendered framebuffer as an MCP `image` content block (base64-encoded PNG, `mimeType: "image/png"`).
 
 10. **`destroy_machine`** with `session_id`. Releases the beebjit subprocess.
 
 ## The rendered screen
 
-After base64-decoding the bytes returned by `screenshot`:
+The PNG returned by `screenshot`:
 
 ![MCP worked example: yellow double-height BEEBJIT-MCP heading above a cyan I'M INSIDE A BBC MICRO line](images/mcp-worked-example.png)
 
@@ -76,7 +76,7 @@ With the prompt visible, [`type_input`](tool-reference.md#type_input)`("NEW\n")`
 
 ### Capturing the screen
 
-[`read_mode7_text`](tool-reference.md#read_mode7_text) reads the teletext page in display order and returns 25 strings of 40 characters together with a newline-joined single string. [`screenshot`](tool-reference.md#screenshot) does a parallel read of beebjit's rendered framebuffer and returns it as a base64-encoded PNG with width and height attached.
+[`read_mode7_text`](tool-reference.md#read_mode7_text) reads the teletext page in display order and returns 25 strings of 40 characters together with a newline-joined single string. [`screenshot`](tool-reference.md#screenshot) does a parallel read of beebjit's rendered framebuffer and returns it as an MCP `image` content block, which image-aware clients render natively.
 
 ## Common pitfalls
 

@@ -27,14 +27,12 @@ No auto-download.
 
 from __future__ import annotations
 
-import base64
 import importlib
-import os
 import sys
 import uuid
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 
 from beebjit_mcp.image import bgraToPng
 from beebjit_mcp.driver import BeebjitDriver, discoverBinary
@@ -699,15 +697,20 @@ def read_mode7_text(
 
 
 @mcp.tool()
-def screenshot(session_id: str) -> dict[str, object]:
+def screenshot(session_id: str) -> Image:
     """Capture the current rendered BBC screen as a PNG.
 
-    Returns base64-encoded PNG bytes plus the rendered width and
-    height in pixels. Works in any BBC display mode: beebjit does
-    the rendering, this tool just packages the result. Requires a
-    fork binary that supports `-headless-render` and the
-    `savescreen` debugger command; older binaries surface a
-    structured error pointing at the install docs.
+    Returns an MCP `image` content block carrying the PNG bytes.
+    MCP clients that recognise image content (Claude Desktop,
+    Claude Code, Cursor, and so on) render the screenshot
+    natively and can save it via their own file tools. Width and
+    height are available from the PNG header (8 bytes after the
+    IHDR marker) for callers that need them. Works in any BBC
+    display mode: beebjit does the rendering, this tool just
+    packages the result. Requires a fork binary that supports
+    `-headless-render` and the `savescreen` debugger command;
+    older binaries surface a structured error pointing at the
+    install docs.
     """
 
     drv = _getDriver(session_id)
@@ -719,12 +722,7 @@ def screenshot(session_id: str) -> dict[str, object]:
 
     png = bgraToPng(bgra, width, height)
 
-    return {
-        "format": "png",
-        "bytes": base64.b64encode(png).decode("ascii"),
-        "width": width,
-        "height": height,
-    }
+    return Image(data=png, format="png")
 
 
 # -----------------------------------------------------------------------

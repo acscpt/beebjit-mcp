@@ -1146,7 +1146,7 @@ Path("screen.png").write_bytes(png)
 
 **Notes**
 
-The MCP `screenshot` tool composes [`captureScreen`](#capturescreen) and `bgraToPng` internally and base64-encodes the result. Library callers who want the same end product can call both directly and skip the base64 step.
+The MCP `screenshot` tool composes [`captureScreen`](#capturescreen) and `bgraToPng` internally and returns the result as an `image` content block. Library callers who want the same end product can call both directly and skip the MCP wrapping.
 
 [^ Index](#index)
 

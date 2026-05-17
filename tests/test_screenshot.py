@@ -39,9 +39,18 @@ def _readIhdrDims(png: bytes) -> tuple[int, int]:
     return width, height
 
 
+def _parseScreenshot(result: object) -> bytes:
+    """Decode the PNG bytes from a `screenshot` MCP response.
+
+    The tool returns a single `image` content block carrying
+    base64 PNG bytes.
+    """
+    return base64.b64decode(result.content[0].data)
+
+
 async def _captureBootScreen(
     params: StdioServerParameters, settleCycles: int
-) -> dict[str, object]:
+) -> bytes:
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -57,12 +66,12 @@ async def _captureBootScreen(
             await session.call_tool(
                 "destroy_machine", {"session_id": sessionId}
             )
-            return json.loads(shot.content[0].text)
+            return _parseScreenshot(shot)
 
 
 async def _captureBeforeAndAfterTyping(
     params: StdioServerParameters, settleCycles: int
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> tuple[bytes, bytes]:
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -88,10 +97,7 @@ async def _captureBeforeAndAfterTyping(
             await session.call_tool(
                 "destroy_machine", {"session_id": sessionId}
             )
-            return (
-                json.loads(before.content[0].text),
-                json.loads(after.content[0].text),
-            )
+            return _parseScreenshot(before), _parseScreenshot(after)
 
 
 async def _captureUnknownSession(
@@ -107,11 +113,9 @@ async def _captureUnknownSession(
 
 
 def testScreenshotBootScreenIsValidPng(beebjitBinary: Path) -> None:
-    payload = asyncio.run(_captureBootScreen(_buildParams(beebjitBinary), 5_000_000))
-    assert payload["format"] == "png"
-    assert payload["width"] == 768
-    assert payload["height"] == 640
-    png = base64.b64decode(payload["bytes"])
+    png = asyncio.run(
+        _captureBootScreen(_buildParams(beebjitBinary), 5_000_000)
+    )
     assert png.startswith(_PNG_SIGNATURE)
     width, height = _readIhdrDims(png)
     assert (width, height) == (768, 640)
@@ -121,13 +125,12 @@ def testScreenshotChangesAfterKeyPress(beebjitBinary: Path) -> None:
     before, after = asyncio.run(
         _captureBeforeAndAfterTyping(_buildParams(beebjitBinary), 5_000_000)
     )
-    assert before["bytes"] != after["bytes"], (
+    assert before != after, (
         "screenshot bytes did not change after a key press; "
         "renderer may be stale or savescreen returning a cached buffer"
     )
     # Dimensions stay the same; only the rendered content shifts.
-    assert before["width"] == after["width"] == 768
-    assert before["height"] == after["height"] == 640
+    assert _readIhdrDims(before) == _readIhdrDims(after) == (768, 640)
 
 
 def testScreenshotUnknownSessionErrors(beebjitBinary: Path) -> None:

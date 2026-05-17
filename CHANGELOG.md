@@ -50,7 +50,7 @@ This project is in alpha. The set of tools, their return formats, and their defa
 
 - **Pre-MOS-init screen capture**: `captureMode7Bytes` now tolerates an uninitialised `&0350/&0351` pointer (typical value `0xFFFF` at cold boot) by clamping to the page base. Lets `run_until_prompt` poll through the boot phase without raising.
 
-- **`screenshot` MCP tool**: capture the current rendered BBC screen as a base64-encoded PNG. Works in any display mode and returns the PNG bytes plus width and height.
+- **`screenshot` MCP tool**: capture the current rendered BBC screen as an MCP `image` content block (`mimeType: "image/png"`).
 
 - **`read_mode7_text` controls parameter**: optional `controls` selects how non-printable bytes render. `"space"` (default) and `"question"` keep rows at 40 chars wide; `"escape"` emits `\xNN` per non-printable byte for callers needing the original byte value preserved in the decoded string.  Mode7Controls enum added.
 

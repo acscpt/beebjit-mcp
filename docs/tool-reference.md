@@ -726,10 +726,7 @@ Capture the current rendered BBC screen as a PNG.
 
 **Returns**
 
-- `format` *(string)*: Always `"png"`. Reserved for future format options.
-- `bytes` *(string)*: Base64-encoded PNG of the rendered framebuffer.
-- `width` *(integer)*: PNG width in pixels (currently 768 for the standard BBC display).
-- `height` *(integer)*: PNG height in pixels (currently 640).
+A single MCP `image` content block with `mimeType: "image/png"` and `data` containing the base64-encoded PNG bytes. Clients that recognise image content (Claude Desktop, Claude Code, Cursor, and so on) render the screenshot natively and can save it via their own file tools. Width and height (currently 768 and 640 for the standard BBC display) are available in the PNG header eight bytes after the `IHDR` marker for callers that need to read them.
 
 **Errors**
 
@@ -741,13 +738,14 @@ Capture the current rendered BBC screen as a PNG.
 // Request
 {"session_id": "<uuid>"}
 
-// Response
-{
-  "format": "png",
-  "bytes": "iVBORw0KGgoAAAANSUhEUgAAA...",
-  "width": 768,
-  "height": 640
-}
+// Response content
+[
+  {
+    "type": "image",
+    "data": "iVBORw0KGgoAAAANSUhEUgAAA...",
+    "mimeType": "image/png"
+  }
+]
 ```
 
 **Notes**
@@ -755,8 +753,6 @@ Capture the current rendered BBC screen as a PNG.
 beebjit renders the BBC screen into a BGRA framebuffer. The driver asks for the buffer via the `savescreen` debugger command, parses the dimensions from beebjit's own output line, and the server converts the BGRA pixel data into a PNG. This is mode-agnostic, so MODE 7, MODE 1, MODE 4 all return a complete rendered screen with no MCP-side per-mode logic.
 
 The PNG is the rendered display, not the raw BBC framebuffer bytes. Hardware scroll, palette, and any video ULA effects are baked in at capture time. Callers wanting the raw screen RAM should use [`read_memory`](#read_memory) at the appropriate mode-base address instead.
-
-`width` and `height` come from beebjit's announced render geometry, not an MCP-side guess.
 
 [^ Index](#index)
 
