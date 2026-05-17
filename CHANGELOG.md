@@ -80,9 +80,7 @@ This project is in alpha. The set of tools, their return formats, and their defa
 
 ### Known limitations
 
-- Only BBC B is wired. `model="master"` fails.
-
-- A specific minimum binary version is required; older builds lack the `-log-stderr` flag and the `savescreen` debugger command. See [binary discovery](docs/binary-discovery.md).
+- A specific minimum binary version is required: the [fork's `v0.9.8-acscpt.3`](https://github.com/acscpt/beebjit/releases) release or newer, which ships the `-log-stderr` and `-headless-render` flags plus the `savescreen` and `loaddisc` debugger commands. See [binary discovery](docs/binary-discovery.md).
 
 - `type_input` runs ~10M BBC cycles per character (HOLD=5M + GAP=5M). At `-fast` that is a few ms per character on a modern host; long scripted input (~1000 chars) takes low-single-digit seconds of host time.
 
@@ -91,5 +89,7 @@ This project is in alpha. The set of tools, their return formats, and their defa
 - `create_machine` does not accept a `cycles` parameter; session lifetime is capped at the driver default of 1e12 BBC cycles (~14 host hours at `-fast`). Orphaned processes linger until the cap expires.
 
 - The MCP server has no shutdown hook; abandoned sessions in `_sessions` leak on server exit. Client-side `destroy_machine` in a `finally` block is the mitigation.
+
+- `boot_disc` waits for a MODE 7 boot banner that programs switching to a non-text mode (games, demos) never repaint. Use `create_machine(disc=...)` for cold-boot autoboot of those discs, which uses a different code path.
 
 - No Windows or macOS CI. Linux x86-64 is the primary target; other platforms may work but are not tested.
