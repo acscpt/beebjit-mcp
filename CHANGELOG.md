@@ -2,9 +2,11 @@
 
 All notable changes to beebjit-mcp. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-This project is pre-alpha. The tool surface, return shapes, and defaults may change without warning until v1.0.
+This project is in alpha. The set of tools, their return formats, and their defaults may change without warning until v1.0.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-05-17
 
 ### Added
 

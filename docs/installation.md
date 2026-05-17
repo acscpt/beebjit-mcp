@@ -1,10 +1,10 @@
 # Installation guide
 
-beebjit-MCP runs as an MCP server that an MCP client (Claude Desktop, Claude Code, Cursor, and so on) can communicate with. 
+beebjit-MCP runs as an MCP server that an MCP client (Claude Desktop, Claude Code, Cursor, and so on) can communicate with.
 
-A Python library is also provided for those that want to drive beebjit directly using a Python API.  
+A Python library is also provided for those that want to drive beebjit directly using a Python API.
 
-Both use cases share the same driver and the same beebjit subprocess underneath. 
+Both use cases share the same driver and the same beebjit subprocess underneath.
 
 Once installed and wired up, the client (or the library) can call tools like `create_machine`, `type_input`, and `run_basic` to drive a live BBC Micro session.
 
@@ -52,7 +52,7 @@ Tagged releases are published at [github.com/acscpt/beebjit/releases](https://gi
 | `beebjit-windows-x86_64.exe` | Windows, GUI build. |
 
 > [!IMPORTANT]
-> beebjit-MCP runs the emulator headlessly so only the headless variants can be used.
+> beebjit-MCP runs the emulator headless so only the headless variants can be used.
 
 The downloaded binary also needs a `roms/` directory next to it at runtime. The simplest way to get both into one place:
 

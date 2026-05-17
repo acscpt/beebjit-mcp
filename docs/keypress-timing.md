@@ -82,6 +82,6 @@ HOLD=3M works for a single clean-boot press but drops roughly 40% of keys in a m
 
 - **Long scripted input** scales linearly: 1000 characters is 10 billion BBC cycles, roughly 5 seconds of host time at `-fast`. If the screen scroll between keystrokes matters to the test, break the input with `run_for_cycles` calls between chunks.
 
-- **Non-standard keyboard handlers** (programs that hook their own routines rather than going through OSBYTE or OSRDCH) may observe different thresholds. The 5M/5M numbers are tuned for the stock MOS path; the MCP tool surface does not currently expose per-call cycle overrides. Use `key_down` / `key_up` and `run_for_cycles` directly to assemble timing tailored to the target program.
+- **Non-standard keyboard handlers** (programs that hook their own routines rather than going through OSBYTE or OSRDCH) may observe different thresholds. The 5M/5M numbers are tuned for the stock MOS path; the MCP tools do not currently expose per-call cycle overrides. Use `key_down` / `key_up` and `run_for_cycles` directly to assemble timing tailored to the target program.
 
 - **Autorepeat** is not a concern at these defaults. The BBC OS autorepeat threshold is longer than 5M cycles; a held key at HOLD=5M never triggers it.

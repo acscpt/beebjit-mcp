@@ -56,7 +56,7 @@ The `with` block guarantees teardown. The five-million-cycle wait gives the MOS 
 
 ## Conventions
 
-- Methods return native Python values, not JSON dicts. `readMemory` returns `bytes`, `readRegisters` returns `dict[str, int | str]`, `captureScreen` returns a `(bgra, width, height)` tuple. The MCP server wraps these into JSON shapes for its tool layer; library callers see the raw values.
+- Methods return native Python values, not JSON dicts. `readMemory` returns `bytes`, `readRegisters` returns `dict[str, int | str]`, `captureScreen` returns a `(bgra, width, height)` tuple. The MCP server wraps these into JSON for its tool layer; library callers see the raw values.
 
 - Addresses and cycle counts are Python ints. Both `31744` and `0x7C00` parse to the same value. Hex literal form keeps BBC addresses self-documenting.
 

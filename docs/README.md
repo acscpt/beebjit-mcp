@@ -8,7 +8,7 @@ The new reader is directed towards the [Quickstart](quickstart.md) guide. The ot
 
 - [Quickstart](quickstart.md) - build beebjit, install this server, register with Claude Code, and run a live HELLO demo. Start here.
 
-- [Tool reference](tool-reference.md) - every MCP tool the server exposes, with parameter shape, return shape, and when to reach for it.
+- [Tool reference](tool-reference.md) - every MCP tool the server exposes, with parameters, return format, and when to reach for it.
 
 - [MCP worked example](mcp-example.md) - the agent prompt, the tool call sequence it triggers, and the screen capture, for an end-to-end MCP-driven demo.
 

@@ -22,7 +22,7 @@ If something goes wrong when calling one of the server's MCP tools then an error
 | [Server died, beebjit still running](#server-process-died-beebjit-subprocesses-still-running) | Server SIGKILLed without cleanup |
 | [Multiple sessions consuming memory](#multiple-sessions-consuming-memory) | Orphaned sessions from disconnected clients |
 | [`claude mcp list` shows disconnected](#claude-mcp-list-shows-beebjit-as-disconnected) | Server failed to launch from `.mcp.json` |
-| [New tools not visible in the client](#new-tools-not-visible-in-the-client) | Client caches tool surface at session start |
+| [New tools not visible in the client](#new-tools-not-visible-in-the-client) | Client caches the tool list at session start |
 | [Tool call hangs for 30+ seconds](#tool-call-hangs-for-30-seconds) | Internal per-command timeout exceeded |
 
 ## Server will not start
@@ -90,7 +90,7 @@ Error message: `could not parse registers from: ...`. The `r` command's output d
 
 Error message: `no prompt within <N>s after '<cmd>'`. The driver wrote a command to beebjit and did not receive a prompt before the timeout. Two typical causes:
 
-- A bare `c` with no armed stop condition lets the BBC run forever. This should not reach the MCP tool surface; if it does, file a server bug.
+- A bare `c` with no armed stop condition lets the BBC run forever. This should not happen at the MCP tool layer; if it does, file a server bug.
 
 - A deadlocked subprocess. A beebjit assertion or an infinite loop in emulated code that does not produce stdout output. The subprocess is still alive. `destroy_machine` escalates to `SIGKILL` and starts fresh.
 
@@ -192,7 +192,7 @@ A working server returns a JSON-RPC `serverInfo` response within a second.
 
 ### New tools not visible in the client
 
-Claude Code and similar clients cache the tool surface at session start. Changes to the server, such as added tools or renamed parameters, require a client-side restart, not just a server restart.
+Claude Code and similar clients cache the tool list at session start. Changes to the server, such as added tools or renamed parameters, require a client-side restart, not just a server restart.
 
 [^ Index](#index)
 

@@ -28,7 +28,7 @@ If the path does not resolve to an executable file, the server exits with:
 $BEEBJIT points at '/home/you/beebjit' which is not an executable file
 ```
 
-In an MCP client config, the same value is set under the server's `env` key rather than as a shell export. See the [client wire-up](installation.md#wire-up-an-mcp-client) section of the installation guide for the JSON shape.
+In an MCP client config, the same value is set under the server's `env` key rather than as a shell export. See the [client wire-up](installation.md#wire-up-an-mcp-client) section of the installation guide for the JSON format.
 
 ## ROMs directory
 

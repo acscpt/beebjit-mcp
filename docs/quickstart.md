@@ -49,7 +49,7 @@ Everything else in the [Tool reference](tool-reference.md) composes from these s
 
 ## Where to go next
 
-- [Tool reference](tool-reference.md) for the full MCP surface and JSON shapes.
+- [Tool reference](tool-reference.md) for every MCP tool and its JSON return format.
 
 - [Session lifecycle](session-lifecycle.md) for how concurrent sessions behave, what holds one open, and how teardown works.
 

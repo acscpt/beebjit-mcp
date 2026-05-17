@@ -3,7 +3,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://github.com/acscpt/beebjit-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/acscpt/beebjit-mcp/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/gh/acscpt/beebjit-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/acscpt/beebjit-mcp)
+[![codecov](https://codecov.io/gh/acscpt/beebjit-mcp/branch/master/graph/badge.svg)](https://codecov.io/gh/acscpt/beebjit-mcp)
 
 beebjit-MCP is a Python-based [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/getting-started/intro) server that lets an AI application instantiate, connect to, drive, capture output from, and interrogate a real [BBC Micro](https://en.wikipedia.org/wiki/BBC_Micro) emulator.
 
@@ -23,12 +23,7 @@ beebjit-MCP drives [Chris Evans' beebjit](https://github.com/scarybeasts/beebjit
 
 - Wait for text to appear on the MODE 7 screen, or for the BASIC `>` prompt.
 
-- Via the debug REPL interface beebjit-MCP can:
-  - read any byte or bytes of BBC Micro RAM
-  - write any byte of BBC RAM
-  - read 6502 register state
-    - A, X, Y, S, PC, P
-  - disassemble instructions
+- Read or write BBC Micro RAM, read 6502 register state, and disassemble 6502 instructions.
 
 - Run a whole BBC BASIC program one-shot and capture the final screen.
 
@@ -46,9 +41,7 @@ Thanks to **Chris Evans** (<scarybeasts@gmail.com>), creator and maintainer of [
 
 ## Fork Notice
 
-This repository points to a _temporary_ [fork of beebjit](https://github.com/acscpt/beebjit) that adds the small set of fixes and flags this MCP harness needs. See [installation](docs/installation.md#install-beebjit) for the exact list.
-
-The main documentation refers to the fork throughout.
+beebjit-MCP currently depends on a [fork of beebjit](https://github.com/acscpt/beebjit) that carries the small set of fixes and flags it needs. See [installation](docs/installation.md#install-beebjit) for the exact list.
 
 ## Disclaimer
 

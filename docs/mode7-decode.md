@@ -77,7 +77,7 @@ The teletext character set overlaps ASCII but is not identical. Three ranges mat
 
 - **Graphics/alphanumeric mode state across a row**. The decoder does not track whether a row is currently in graphics or alphanumeric mode. It emits printable ASCII as ASCII and everything else as space.
 
-## Return shape
+## Return format
 
 ```json
 {
