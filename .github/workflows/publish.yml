@@ -25,12 +25,15 @@ jobs:
       - name: Install package and test dependencies
         run: pip install -e ".[dev]"
 
-      - name: Download beebjit headless binary from fork latest release
+      - name: Download beebjit binary and ROMs from fork
         run: |
-          curl -fL -o beebjit \
+          # Clone the fork to get the roms/ directory alongside the
+          # binary; beebjit reads its OS ROMs from there at runtime.
+          git clone --depth 1 https://github.com/acscpt/beebjit.git "$RUNNER_TEMP/beebjit"
+          curl -fL -o "$RUNNER_TEMP/beebjit/beebjit" \
             https://github.com/acscpt/beebjit/releases/latest/download/beebjit-headless-linux-x86_64
-          chmod +x beebjit
-          echo "BEEBJIT=$PWD/beebjit" >> "$GITHUB_ENV"
+          chmod +x "$RUNNER_TEMP/beebjit/beebjit"
+          echo "BEEBJIT=$RUNNER_TEMP/beebjit/beebjit" >> "$GITHUB_ENV"
 
       - name: Run tests
         run: pytest tests/ -v
