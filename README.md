@@ -31,6 +31,27 @@ beebjit-MCP drives [Chris Evans' beebjit](https://github.com/scarybeasts/beebjit
 
 - Tear everything down cleanly when the client disconnects.
 
+## Python library for testing and CI/CD
+
+The same package is a Python library as well as an MCP server. `BeebjitDriver` exposes the same operations as methods on an in-process class, with no MCP client or JSON-RPC framing in between.
+
+A pytest run boots a BBC, exercises a disc image, runs a program, and asserts on the resulting screen or memory, in-process and headless. The same run sits inside a GitHub Actions job, and a disc-image toolchain calls the library to check that its output boots on a cycle-accurate machine.
+
+```python
+from beebjit_mcp import BeebjitDriver, BeebModel
+from beebjit_mcp.screen import mode7TextContains
+
+
+def test_hello_boots():
+    with BeebjitDriver.fromEnvironment(model=BeebModel.B) as bbc:
+        bbc.runCycles(2_000_000)              # boot to the BASIC prompt
+        bbc.typeText('PRINT "HELLO"\n')
+        bbc.runCycles(2_000_000)
+        assert mode7TextContains(bbc.captureMode7Bytes(), "HELLO")
+```
+
+The [Python API](docs/python-api.md) covers each method, and the [worked example](docs/python-example.md) boots a BBC, runs a colour MODE 7 program, and writes a PNG of the screen.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
