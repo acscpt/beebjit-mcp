@@ -1,5 +1,7 @@
 # beebjit-MCP
 
+[![PyPI](https://img.shields.io/pypi/v/beebjit-mcp.svg)](https://pypi.org/project/beebjit-mcp/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/beebjit-mcp?period=total&units=INTERNATIONAL_SYSTEM&left_color=GRAY&right_color=RED&left_text=downloads)](https://pepy.tech/projects/beebjit-mcp)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://github.com/acscpt/beebjit-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/acscpt/beebjit-mcp/actions/workflows/tests.yml)
