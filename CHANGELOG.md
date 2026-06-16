@@ -10,7 +10,7 @@ This project is in alpha. The set of tools, their return formats, and their defa
 
 ### Added
 
-- **`BEEBJIT_MCP_WORKSPACE` environment variable**: base directory for resolving relative disc-image paths passed to `create_machine`, `load_disc`, and `boot_disc`. Absolute paths are unaffected. When the variable is unset, relative paths resolve against the server's working directory as before. The value expands `~` and `$VAR`/`${VAR}` references against the server environment, so it can defer to a variable such as `${HOME}`. Lets a client whose agent passes paths relative to a workspace folder name that folder instead of requiring absolute paths.
+- **`BEEBJIT_MCP_WORKSPACE` environment variable**: base directory for resolving relative disc-image paths passed to `create_machine`, `load_disc`, and `boot_disc`. Absolute paths are unaffected. When the variable is unset, relative paths resolve against the server's working directory as before. The value expands `~` and `$VAR`/`${VAR}` references against the server environment, so it can defer to a variable such as `${HOME}`. Lets a client whose agent passes paths relative to a workspace folder name that folder instead of requiring absolute paths. Reported in [#1](https://github.com/acscpt/beebjit-mcp/issues/1).
 
 ## [0.1.0] - 2026-05-17
 
