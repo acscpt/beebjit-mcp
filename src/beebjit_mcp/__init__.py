@@ -3,6 +3,6 @@
 
 from beebjit_mcp.driver import BeebjitDriver, BeebjitError, BeebModel
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = ["BeebjitDriver", "BeebjitError", "BeebModel", "__version__"]

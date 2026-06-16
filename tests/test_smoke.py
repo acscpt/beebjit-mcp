@@ -6,7 +6,7 @@ from beebjit_mcp import BeebjitDriver, BeebjitError, BeebModel
 
 
 def testPackageImportable() -> None:
-    assert beebjit_mcp.__version__ == "0.1.0"
+    assert beebjit_mcp.__version__ == "0.1.1"
 
 
 def testTopLevelReExports() -> None:

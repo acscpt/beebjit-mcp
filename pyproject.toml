@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beebjit-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Pure-Python MCP server exposing the beebjit BBC Micro emulator to MCP-speaking clients over stdio JSON-RPC"
 readme = "README.md"
 license = {text = "MIT"}

@@ -28,6 +28,7 @@ No auto-download.
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -100,6 +101,41 @@ def _resolveKey(key: str | int) -> int:
     return resolveKeyName(key)
 
 
+def _resolveDiscPath(disc: str) -> Path:
+    """Resolve a disc-image argument to a path and confirm it is a file.
+
+    Absolute paths are used as given. A relative path is resolved
+    against `$BEEBJIT_MCP_WORKSPACE` when set, otherwise the current
+    directory. The override exists because a client spawns the server
+    in an unspecified working directory, so a caller passing a path
+    relative to its own workspace needs a way to name that workspace.
+
+    A `~` or `$VAR`/`${VAR}` reference in `$BEEBJIT_MCP_WORKSPACE` is
+    expanded against the server's own environment, so the variable can
+    defer to another, for example `${HOME}/bbc-discs`. A reference to a
+    variable absent from that environment is left untouched and the
+    path simply will not resolve.
+
+    Raises `FileNotFoundError` naming the original argument when the
+    resolved path is not a file.
+    """
+
+    path = Path(disc)
+
+    if not path.is_absolute():
+        override = os.environ.get("BEEBJIT_MCP_WORKSPACE")
+        if override:
+            base = os.path.expanduser(os.path.expandvars(override))
+        else:
+            base = os.getcwd()
+        path = (Path(base) / path).resolve()
+
+    if not path.is_file():
+        raise FileNotFoundError(f"disc image not found: {disc}")
+
+    return path
+
+
 # -----------------------------------------------------------------------
 # Lifecycle tools
 # -----------------------------------------------------------------------
@@ -131,11 +167,7 @@ def create_machine(model: str = "b", disc: str | None = None) -> dict[str, str]:
 
     # Validate the disc path Python-side before spawning, so a typo
     # fails fast with a clean error rather than after subprocess setup.
-    discPath: Path | None = None
-    if disc:
-        discPath = Path(disc)
-        if not discPath.is_file():
-            raise FileNotFoundError(f"disc image not found: {disc}")
+    discPath: Path | None = _resolveDiscPath(disc) if disc else None
 
     # Spawn and wait for the first debugger prompt. Blocks until
     # beebjit is ready (or raises on failure to start).
@@ -187,11 +219,9 @@ def load_disc(
 
     # Python-side existence check so the caller sees a clean
     # FileNotFoundError before the debugger gets the command. The
-    # fork would also catch this (`loaddisc: failed`) but its message
+    # binary would also catch this (`loaddisc: failed`) but its message
     # is generic; ours points at the missing path.
-    discPath = Path(disc)
-    if not discPath.is_file():
-        raise FileNotFoundError(f"disc image not found: {disc}")
+    discPath = _resolveDiscPath(disc)
 
     drv.loadDisc(drive, discPath, writeable=writeable, mutable=mutable)
 
@@ -228,9 +258,7 @@ def boot_disc(
 
     drv = _getDriver(session_id)
 
-    discPath = Path(disc)
-    if not discPath.is_file():
-        raise FileNotFoundError(f"disc image not found: {disc}")
+    discPath = _resolveDiscPath(disc)
 
     drv.loadDisc(drive, discPath, writeable=writeable, mutable=mutable)
     drv.reset(autoboot=True)

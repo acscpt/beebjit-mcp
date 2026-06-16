@@ -143,6 +143,31 @@ Two paths must be absolute:
 
 - `BEEBJIT` is the path to the beebjit binary you installed in the first step. The MCP client spawns the server in an unspecified working directory, so a relative path will not resolve.
 
+### Relative disc paths and the workspace
+
+Disc-image arguments to `create_machine`, `load_disc`, and `boot_disc` may be absolute or relative. An absolute path is always used as given.
+
+A relative path is resolved against the directory named by the optional `BEEBJIT_MCP_WORKSPACE` environment variable, falling back to the server's own working directory when the variable is unset. The client spawns the server in an unspecified working directory, so a client whose agent passes paths relative to a project or workspace folder should set `BEEBJIT_MCP_WORKSPACE` to that folder in the same `env` block:
+
+```json
+{
+  "mcpServers": {
+    "beebjit": {
+      "command": "/absolute/path/to/beebjit-mcp/.venv/bin/beebjit-mcp",
+      "args": [],
+      "env": {
+        "BEEBJIT": "/absolute/path/to/beebjit/beebjit",
+        "BEEBJIT_MCP_WORKSPACE": "/absolute/path/to/your/project"
+      }
+    }
+  }
+}
+```
+
+With that set, a tool call passing `discs/Elite.ssd` loads `/absolute/path/to/your/project/discs/Elite.ssd`. Clients that already launch the server in the project directory need not set it; the working-directory fallback covers them.
+
+The value may itself defer to another environment variable or a home-directory `~`, expanded against the server's own environment, for example `"${HOME}/bbc-discs"`. This is independent of any `${...}` substitution your client applies to the config file before launch, so it works even on clients that pass `env` values through verbatim. Only variables that actually reach the server expand; a reference to a name the client does not forward is left untouched and the path will not resolve.
+
 ### Claude Code
 
 Project-level config lives in `.mcp.json` at the project root:

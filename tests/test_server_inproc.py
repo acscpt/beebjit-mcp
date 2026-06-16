@@ -111,6 +111,63 @@ def testCreateMachineRejectsMissingDisc(
         server.create_machine(model="b", disc="/no/such/file.ssd")
 
 
+def testResolveDiscPathAbsolutePassthrough(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    img = tmp_path / "game.ssd"
+    img.write_bytes(b"")
+    monkeypatch.setenv("BEEBJIT_MCP_WORKSPACE", "/somewhere/else")
+
+    resolved = server._resolveDiscPath(str(img))
+
+    assert resolved == img
+
+
+def testResolveDiscPathRelativeUsesWorkspaceOverride(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    img = tmp_path / "discs" / "game.ssd"
+    img.parent.mkdir()
+    img.write_bytes(b"")
+    monkeypatch.setenv("BEEBJIT_MCP_WORKSPACE", str(tmp_path))
+
+    resolved = server._resolveDiscPath("discs/game.ssd")
+
+    assert resolved == img
+
+
+def testResolveDiscPathRelativeFallsBackToCwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    img = tmp_path / "game.ssd"
+    img.write_bytes(b"")
+    monkeypatch.delenv("BEEBJIT_MCP_WORKSPACE", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    resolved = server._resolveDiscPath("game.ssd")
+
+    assert resolved == img
+
+
+def testResolveDiscPathExpandsEnvVarInWorkspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    img = tmp_path / "game.ssd"
+    img.write_bytes(b"")
+    monkeypatch.setenv("PROJECT_FOLDER", str(tmp_path))
+    monkeypatch.setenv("BEEBJIT_MCP_WORKSPACE", "${PROJECT_FOLDER}")
+
+    resolved = server._resolveDiscPath("game.ssd")
+
+    assert resolved == img
+
+
+def testResolveDiscPathRaisesWhenMissing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BEEBJIT_MCP_WORKSPACE", raising=False)
+    with pytest.raises(FileNotFoundError, match="disc image not found"):
+        server._resolveDiscPath("/no/such/file.ssd")
+
+
 def testReloadModuleAcceptsKeyboard() -> None:
     result = server.reload_module("keyboard")
     assert result["ok"] is True

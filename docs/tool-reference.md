@@ -65,7 +65,7 @@ Boot a fresh BBC Micro session.
 
   Disc-image format follows from the model. BBC B and the two Master 128 variants read DFS images (`.ssd` and `.dsd`); Master Compact reads ADFS images (`.adl` and `.adf`). Mounting an unsupported format on a model leaves the OS at the BASIC prompt because its filing system rejects the layout it sees.
 
-- `disc` *(string | null, default `null`)*: Absolute path to a disc image (DFS `.ssd` or `.dsd`, or ADFS `.adl` or `.adf`). When set, SHIFT is held in the keyboard matrix from cycle zero, the disc is mounted into drive 0 read-only, and MOS init reads SHIFT during its boot keyboard scan and runs the disc's `!BOOT`. The gesture matches a real user holding SHIFT before powering on with a disc inserted. For a writeable mount or for non-default drive selection, omit this parameter and call [`load_disc`](#load_disc) directly after `create_machine`.
+- `disc` *(string | null, default `null`)*: Path to a disc image (DFS `.ssd` or `.dsd`, or ADFS `.adl` or `.adf`). An absolute path is used as given; a relative path resolves against [`$BEEBJIT_MCP_WORKSPACE`](installation.md#relative-disc-paths-and-the-workspace) or, when that is unset, the server's working directory. When set, SHIFT is held in the keyboard matrix from cycle zero, the disc is mounted into drive 0 read-only, and MOS init reads SHIFT during its boot keyboard scan and runs the disc's `!BOOT`. The gesture matches a real user holding SHIFT before powering on with a disc inserted. For a writeable mount or for non-default drive selection, omit this parameter and call [`load_disc`](#load_disc) directly after `create_machine`.
 
 **Returns**
 
@@ -169,7 +169,7 @@ Mount a disc image into a drive at runtime. The BBC keeps its current state; the
 
 **Parameters**
 
-- `disc` *(string)*: Absolute path to a disc image (DFS `.ssd` or `.dsd`, or ADFS `.adl` or `.adf`). The MCP layer checks the path exists before sending the command.
+- `disc` *(string)*: Path to a disc image (DFS `.ssd` or `.dsd`, or ADFS `.adl` or `.adf`). An absolute path is used as given; a relative path resolves against [`$BEEBJIT_MCP_WORKSPACE`](installation.md#relative-disc-paths-and-the-workspace) or, when that is unset, the server's working directory. The path is checked to exist before the command is sent.
 
 - `drive` *(integer, default `0`)*: BBC disc drive to mount into. Either `0` or `1`.
 
